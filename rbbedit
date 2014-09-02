@@ -1,0 +1,225 @@
+#!/bin/sh
+# 
+# Created by: Charlie Garrison <garrison@zeta.org.au>
+# Copyright:  Copyright (c) 2014 Charlie Garrison
+#             All Rights Reserved.
+# Created on: 2014-09-01
+#  $Revision: $
+#    $Author: $
+#      $Date: $
+#    Purpose: Script to edit local files on remote workstation using BBEdit
+#-----------------------------------------------------------------------
+# $Log: $
+# v0.1 Requires ExpanDrive for remote volume mounting
+# v0.2 Parse ARGS using getopts
+# v0.3 Multiple copy methods supported, absolute or relative paths, better error handling
+# v0.4 Better support for `sh` on different platforms
+#-----------------------------------------------------------------------
+
+bbedit_ssh_host=""
+bbedit_ssh_port=""
+copy_method="sftp" # scp | expan | rsync | sftp
+expan_volume=""
+bbedit_wait=" --wait --resume"
+verbose=0
+
+# Check that at least one argument was specified
+if [ $# -lt 1 ] ; then
+   echo "You must specify at least 1 file name."
+   exit 1
+fi
+
+while getopts h:p:m:x:wv opt
+do case "$opt" in
+   h) bbedit_ssh_host="$OPTARG";;
+   p) bbedit_ssh_port="$OPTARG";;
+   m) copy_method="$OPTARG";;
+   x) expan_volume="$OPTARG"
+      copy_method="expan";;
+#  w) bbedit_wait=" --wait --resume";;
+   v) verbose=1;;
+  \?) echo >&2 "Usage: $0 [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] file ..."
+      exit 1;;
+   esac
+done
+
+shift_args=$(( $OPTIND-1 ))
+shift $shift_args
+edit_files=$@
+
+# Check that we have copy method
+if [ -z "$copy_method" ] ; then
+   echo "You must specify a copy method."
+   exit 1
+fi
+
+# Set bbedit_ssh_host from SSH_CLIENT if not set already
+if [ -z "$bbedit_ssh_host" ] ; then
+   bbedit_ssh_host=`echo $SSH_CLIENT | awk '{ print $1}'`
+fi
+# Set bbedit_ssh_host from `who` if still not set
+if [ -z "$bbedit_ssh_host" ] ; then
+   bbedit_ssh_host=`who | awk '{ print $5}' | sed 's/[()]//g'`
+fi
+
+# Check that we have ssh host
+if [ -z "$bbedit_ssh_host" ] ; then
+   echo "You must specify a hostname."
+   exit 1
+fi
+
+bbedit_ssh_port_arg=""
+# Check that we have ssh host
+if [ ! -z "$bbedit_ssh_port" ] ; then
+   bbedit_ssh_port_arg="-p $bbedit_ssh_port"
+fi
+
+bbedit_command="/usr/bin/bbedit $bbedit_wait"
+bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
+
+if [ $verbose -gt 0 ] ; then
+   echo "Method: $copy_method"
+   echo "SSH Command: $bbedit_ssh_command"
+   echo "Files: $edit_files"
+fi
+
+if [ $copy_method = "expan" ]; then
+
+   # Check that we have ssh host
+   if [ -z "$expan_volume" ] ; then
+      echo "You must specify an expandrive volume."
+      exit 1
+   fi
+   if [ $verbose -gt 0 ] ; then
+      echo "ExpanDrive Volume: $expan_volume"
+   fi
+
+   $bbedit_ssh_command /usr/local/bin/expan connect $expan_volume 2>/dev/null
+
+   ## wait for volume mount to finish (HACK!!)
+   sleep 3
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+
+      if [ ! -f "$abs_path" ] ; then
+         echo "File not found: $abs_path"
+
+      else
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: $abs_path"
+         fi
+
+         $bbedit_ssh_command $bbedit_command /Volumes/$expan_volume/$abs_path
+
+     fi
+
+   done
+
+elif [ $copy_method = "scp" ]; then
+
+   bbedit_tmp_dir=`$bbedit_ssh_command echo '$TMPDIR'`
+   #bbedit_tmp_dir=`$bbedit_ssh_command /usr/bin/getconf DARWIN_USER_CACHE_DIR`
+   if [ $verbose -gt 0 ] ; then
+      echo "TMP dir: $bbedit_tmp_dir"
+   fi
+
+   bbedit_scp_port_arg=""
+   if [ ! -z "$bbedit_ssh_port" ] ; then
+      bbedit_scp_port_arg="-P $bbedit_ssh_port"
+   fi
+   bbedit_scp_command="scp $bbedit_scp_port_arg -p -q"
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+      filename=`basename $abs_path`
+
+      if [ ! -f "$abs_path" ] ; then
+         echo "File not found: $abs_path"
+
+      else
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: $abs_path"
+         fi
+
+         $bbedit_scp_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
+
+         $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
+
+         $bbedit_scp_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
+      fi
+
+   done
+
+elif [ $copy_method = "sftp" ]; then
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+
+      if [ ! -f "$abs_path" ] ; then
+         echo "File not found: $abs_path"
+
+      else
+         if [ -z "$HOSTNAME" ] ; then
+            HOSTNAME=`hostname`
+         fi
+
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: sftp://$USER@$HOSTNAME/$abs_path"
+         fi
+
+         $bbedit_ssh_command $bbedit_command "sftp://$USER@$HOSTNAME/$abs_path"
+      fi
+
+   done
+
+elif [ $copy_method = "rsync" ]; then
+   
+   bbedit_tmp_dir=`$bbedit_ssh_command echo '$TMPDIR'`
+   #bbedit_tmp_dir=`$bbedit_ssh_command /usr/bin/getconf DARWIN_USER_CACHE_DIR`
+   if [ $verbose -gt 0 ] ; then
+      echo "TMP dir: $bbedit_tmp_dir"
+   fi
+
+   bbedit_rsync_port_arg=""
+   if [ ! -z "$bbedit_ssh_port" ] ; then
+      bbedit_rsync_port_arg="--port $bbedit_ssh_port"
+   fi
+   bbedit_rsync_command="rsync $bbedit_rsync_port_arg -pt -q --rsh=ssh"
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+      filename=`basename $abs_path`
+
+      if [ ! -f "$abs_path" ] ; then
+         echo "File not found: $abs_path"
+
+      else
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: $abs_path"
+         fi
+
+         $bbedit_rsync_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
+
+         $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
+
+         $bbedit_rsync_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
+      fi
+
+   done
+
+else
+   echo "Unknown copy metehod: $copy_method"
+   exit 1
+   
+fi
+
+
+# Local Variables:
+# tab-width: 3
+# x-auto-expand-tabs: true
+# End:
