@@ -16,12 +16,17 @@
 # v0.4 Better support for `sh` on different platforms
 #-----------------------------------------------------------------------
 
+bbedit_ssh_user=""
 bbedit_ssh_host=""
 bbedit_ssh_port=""
 copy_method="sftp" # scp | expan | rsync | sftp
 expan_volume=""
-bbedit_wait=" --wait --resume"
+bbedit_wait_args=" --wait --resume"
+bbedit_wait="$bbedit_wait_args"
 verbose=0
+
+# get user defaults
+. ~/.rbbedit
 
 # Check that at least one argument was specified
 if [ $# -lt 1 ] ; then
@@ -29,16 +34,18 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts h:p:m:x:wv opt
+while getopts u:h:p:m:x:wWv opt
 do case "$opt" in
+   u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
    p) bbedit_ssh_port="$OPTARG";;
    m) copy_method="$OPTARG";;
    x) expan_volume="$OPTARG"
       copy_method="expan";;
-#  w) bbedit_wait=" --wait --resume";;
+   w) bbedit_wait="$bbedit_wait_args";;
+   W) bbedit_wait="";;
    v) verbose=1;;
-  \?) echo >&2 "Usage: $0 [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] file ..."
+  \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
       exit 1;;
    esac
 done
@@ -59,7 +66,7 @@ if [ -z "$bbedit_ssh_host" ] ; then
 fi
 # Set bbedit_ssh_host from `who` if still not set
 if [ -z "$bbedit_ssh_host" ] ; then
-   bbedit_ssh_host=`who | awk '{ print $5}' | sed 's/[()]//g'`
+   bbedit_ssh_host=`who | awk 'NR==1{ print $5}' | sed 's/[()]//g'`
 fi
 
 # Check that we have ssh host
@@ -68,10 +75,25 @@ if [ -z "$bbedit_ssh_host" ] ; then
    exit 1
 fi
 
+# Add bbedit_ssh_user (if set) to bbedit_ssh_host 
+if [ ! -z "$bbedit_ssh_user" ] ; then
+   bbedit_ssh_host="$bbedit_ssh_user@$bbedit_ssh_host"
+fi
+
+
 bbedit_ssh_port_arg=""
 # Check that we have ssh host
 if [ ! -z "$bbedit_ssh_port" ] ; then
    bbedit_ssh_port_arg="-p $bbedit_ssh_port"
+fi
+
+# scp and rsync methods require bbedit_wait
+if [ $copy_method = "scp" -o $copy_method = "rsync" ] ; then
+   # if bbedit_wait is already set, then keep supplied value
+   # otherwise set to default wait args
+   if [ -z "$bbedit_wait" ] ; then
+      bbedit_wait="$bbedit_wait_args"
+   fi
 fi
 
 bbedit_command="/usr/bin/bbedit $bbedit_wait"
@@ -80,6 +102,7 @@ bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
 if [ $verbose -gt 0 ] ; then
    echo "Method: $copy_method"
    echo "SSH Command: $bbedit_ssh_command"
+   echo "BBEdit Command: $bbedit_command"
    echo "Files: $edit_files"
 fi
 
@@ -103,17 +126,44 @@ if [ $copy_method = "expan" ]; then
    do
       abs_path=`readlink -n -f $i`
 
-      if [ ! -f "$abs_path" ] ; then
-         echo "File not found: $abs_path"
+      if [ ! -r "$abs_path" ] ; then
+         echo "File/dir not found, or is not readable: $abs_path"
 
       else
          if [ $verbose -gt 0 ] ; then
-            echo "Editing file: $abs_path"
+            echo "Editing file: $abs_path using /Volumes/$expan_volume/$abs_path"
          fi
 
          $bbedit_ssh_command $bbedit_command /Volumes/$expan_volume/$abs_path
 
      fi
+
+   done
+
+elif [ $copy_method = "sftp" ]; then
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+
+      if [ ! -r "$abs_path" ] ; then
+         echo "File/dir not found, or is not readable: $abs_path"
+
+      else
+         if [ -z "$HOSTNAME" ] ; then
+            HOSTNAME=`hostname`
+         fi
+
+         if [ -d "$abs_path" ] ; then
+            abs_path="$abs_path/"
+         fi
+
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: $abs_path using sftp://$USER@$HOSTNAME/$abs_path"
+         fi
+
+         $bbedit_ssh_command $bbedit_command "sftp://$USER@$HOSTNAME/$abs_path"
+      fi
 
    done
 
@@ -136,12 +186,14 @@ elif [ $copy_method = "scp" ]; then
       abs_path=`readlink -n -f $i`
       filename=`basename $abs_path`
 
-      if [ ! -f "$abs_path" ] ; then
-         echo "File not found: $abs_path"
+      ## it should be fine working with directories, but there is non-trivial risk when copying data back
+      ## so let's only support editing of single files with this version
+      if [ ! -f "$abs_path" -o ! -r "$abs_path" ] ; then
+         echo "File not found, or is not readable: $abs_path"
 
       else
          if [ $verbose -gt 0 ] ; then
-            echo "Editing file: $abs_path"
+            echo "Editing file: $abs_path using $bbedit_tmp_dir/$filename"
          fi
 
          $bbedit_scp_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
@@ -149,29 +201,6 @@ elif [ $copy_method = "scp" ]; then
          $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
 
          $bbedit_scp_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
-      fi
-
-   done
-
-elif [ $copy_method = "sftp" ]; then
-
-   for i in $edit_files
-   do
-      abs_path=`readlink -n -f $i`
-
-      if [ ! -f "$abs_path" ] ; then
-         echo "File not found: $abs_path"
-
-      else
-         if [ -z "$HOSTNAME" ] ; then
-            HOSTNAME=`hostname`
-         fi
-
-         if [ $verbose -gt 0 ] ; then
-            echo "Editing file: sftp://$USER@$HOSTNAME/$abs_path"
-         fi
-
-         $bbedit_ssh_command $bbedit_command "sftp://$USER@$HOSTNAME/$abs_path"
       fi
 
    done
@@ -195,12 +224,14 @@ elif [ $copy_method = "rsync" ]; then
       abs_path=`readlink -n -f $i`
       filename=`basename $abs_path`
 
-      if [ ! -f "$abs_path" ] ; then
-         echo "File not found: $abs_path"
+      ## it should be fine working with directories, but there is non-trivial risk when copying data back
+      ## so let's only support editing of single files with this version
+      if [ ! -f "$abs_path" -o ! -r "$abs_path" ] ; then
+         echo "File not found, or is not readable: $abs_path"
 
       else
          if [ $verbose -gt 0 ] ; then
-            echo "Editing file: $abs_path"
+            echo "Editing file: $abs_path using $bbedit_tmp_dir/$filename"
          fi
 
          $bbedit_rsync_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename

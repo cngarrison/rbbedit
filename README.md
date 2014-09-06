@@ -63,11 +63,35 @@ Installation
 Script options
 --------------
 
+* `-u username`: workstation/ssh user; specify username to use in hostname argument for ssh command
 * `-h hostname`: workstation/ssh host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
 * `-p port`: workstation/ssh port; connect to ssh using port other than 22
 * `-m copy-method`: sftp | expan | scp | rsync
 * `-x expandrive-volume`: volume name as configured in drives list of ExpanDrive, implies `-m expan`
 * `-v`: verbose
+* `-w`: Enable BBEdit wait mode (default)
+* `-w`: Disable BBEdit wait mode (only sftp & expan methods)
+
+#### User Defaults
+
+All options specified in the users ~/.rbbedit file will be used as defaults. Options specified on the command line will override user defaults.
+
+The following options can be set in ~/.rbbedit file. These are the script default values.
+
+	bbedit_ssh_user=""
+	bbedit_ssh_host=""
+	bbedit_ssh_port=""
+	copy_method="sftp" # scp | expan | rsync | sftp
+	expan_volume=""
+	bbedit_wait_args=" --wait --resume"
+	bbedit_wait="$bbedit_wait_args"
+	verbose=0
+
+#### Set as EDITOR
+
+Use rbbedit as your EDITOR, eg:
+
+	export EDITOR="rbbedit -w"
 
 
 Copy Methods
@@ -85,13 +109,15 @@ All the commands sent from server to the workstation use ssh.
 
 Multiple files can be specified at once. Only one file will opened/edited at a time. 
 
+Only files can be specified for `scp` and `rsync` methods, while the `sftp` and `expan` methods will also open directories.
+
 
 Known Issues
 ------------
 
 No error checking is done for any of the `ssh` commands (or 'copy' commands). 
 
-To allow copying files back to server for the 'scp' and 'rsync' methods, the `bbedit` `--wait` option must be specified. The `wait` option is currently hard-coded for all copy methods. It should be optional for the 'sftp' and 'expan' methods.
+To allow copying files back to server for the 'scp' and 'rsync' methods, the `bbedit` `--wait` option must be specified. 
 
 Only real (existing) files can be edited; not text passed via STDIN. 
 
