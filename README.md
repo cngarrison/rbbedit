@@ -17,6 +17,10 @@ Connect to server-host from the BBEdit workstation.
 
 Open filename on workstation using default copy method (sftp).
 
+	server-host$ rbbedit -u myuser filename
+
+Open filename on workstation, connecting to workstation as 'myuser'.
+
 	server-host$ rbbedit -m scp filename
 
 Open filename on workstation using scp method.
@@ -123,6 +127,10 @@ Only real (existing) files can be edited; not text passed via STDIN.
 
 There is no simple/reliable way to determine whether ExpanDrive has finished mounting the remote volume, or whether there was an error. Existence of volume's path could be checked; currently the script just sleeps for 3 seconds before trying to open the file.
 
+Project Home
+------------
+
+[rbbedit @GitHub](https://github.com/cngarrison/rbbedit/)
 
 License
 -------
