@@ -26,7 +26,9 @@ bbedit_wait="$bbedit_wait_args"
 verbose=0
 
 # get user defaults
-. ~/.rbbedit
+if [ -r ~/.rbbedit ] ; then
+   . ~/.rbbedit
+fi
 
 # Check that at least one argument was specified
 if [ $# -lt 1 ] ; then
