@@ -14,18 +14,23 @@
 # v0.2 Parse ARGS using getopts
 # v0.3 Multiple copy methods supported, absolute or relative paths, better error handling
 # v0.4 Better support for `sh` on different platforms
+# v0.5 Command option to send or get SSH keys to/from BBEdit workstation
 #-----------------------------------------------------------------------
 
 bbedit_ssh_user=""
 bbedit_ssh_host=""
 bbedit_ssh_port=""
+local_ssh_copy_id_command="ssh-copy-id"
+bbedit_ssh_copy_id_command="/usr/local/bin/ssh-copy-id"
 copy_method="sftp" # scp | expan | rsync | sftp
 expan_volume=""
 bbedit_wait_args=" --wait --resume"
 bbedit_wait="$bbedit_wait_args"
+local_key_identity=""
+bbedit_key_identity=""
 verbose=0
 
-# get user defaults
+# get user defaults, can set user defaults for any of the above settings
 if [ -r ~/.rbbedit ] ; then
    . ~/.rbbedit
 fi
@@ -36,7 +41,7 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts u:h:p:m:x:wWv opt
+while getopts u:h:p:m:x:k:i:wWv opt
 do case "$opt" in
    u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
@@ -44,6 +49,9 @@ do case "$opt" in
    m) copy_method="$OPTARG";;
    x) expan_volume="$OPTARG"
       copy_method="expan";;
+   k) key_copy="$OPTARG";;
+   i) local_key_identity="$OPTARG"
+      bbedit_key_identity="$OPTARG";;
    w) bbedit_wait="$bbedit_wait_args";;
    W) bbedit_wait="";;
    v) verbose=1;;
@@ -84,7 +92,7 @@ fi
 
 
 bbedit_ssh_port_arg=""
-# Check that we have ssh host
+# Check whether we have ssh port
 if [ ! -z "$bbedit_ssh_port" ] ; then
    bbedit_ssh_port_arg="-p $bbedit_ssh_port"
 fi
@@ -101,12 +109,100 @@ fi
 bbedit_command="/usr/bin/bbedit $bbedit_wait"
 bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
 
+# Add bbedit_ssh_user (if set) to bbedit_ssh_host 
+if [ ! -z "$key_copy" ] ; then
+
+   ssh_copy_id_command=""
+   if [ $key_copy = "send" -o $key_copy = "put" ]; then
+   
+      key_identity_arg=""
+      if [ ! -z "$local_key_identity" ] ; then
+         key_identity_arg="-i $local_key_identity"
+      fi
+
+      if [ ! -z "$bbedit_ssh_port_arg" ] ; then
+         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_host $bbedit_ssh_port_arg"
+      else
+         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_host"
+      fi
+
+      if [ $verbose -gt 0 ] ; then
+         echo "Key Copy Direction: $key_copy"
+         echo "Local Key Identity: $local_key_identity"
+         echo "ssh-copy-id command: $ssh_copy_id_command"
+      fi
+
+      if ${ssh_copy_id_command}; then
+         echo "Key copied."
+         exit 0
+      else
+         echo "Unknown error copying key"
+         exit 1
+      fi
+
+
+   elif [ $key_copy = "get" ]; then
+   
+      key_identity_arg=""
+      if [ ! -z "$bbedit_key_identity" ] ; then
+         key_identity_arg="-i $bbedit_key_identity"
+      fi
+
+      if [ -z "$HOSTNAME" ] ; then
+         HOSTNAME=`hostname`
+      fi
+
+      ssh_copy_id_command="$bbedit_ssh_command $bbedit_ssh_copy_id_command $key_identity_arg $USER@$HOSTNAME"
+
+      if [ $verbose -gt 0 ] ; then
+         echo "Key Copy Direction: $key_copy"
+         echo "Workstation Key Identity: $bbedit_key_identity"
+         echo "ssh-copy-id command: $ssh_copy_id_command"
+      fi
+
+      if ${ssh_copy_id_command}; then
+         echo "Key copied."
+         exit 0
+      else
+         echo "Unknown error copying key, trying fallback method"
+
+         if [ -z "$bbedit_key_identity" ] ; then
+            bbedit_key_identity="~/.ssh/id_rsa.pub"
+         fi
+         ssh_copy_id_command="$bbedit_ssh_command cat $bbedit_key_identity"
+
+         if [ $verbose -gt 0 ] ; then
+            echo "Workstation Key Identity: $bbedit_key_identity"
+            echo "ssh-copy-id command: $ssh_copy_id_command  >> ~/.ssh/authorized_keys"
+         fi
+
+         bbedit_ssh_key=`$ssh_copy_id_command`
+         echo $bbedit_ssh_key >> ~/.ssh/authorized_keys
+         
+         if [ ! -z "$bbedit_ssh_key" ]; then
+            echo "Key copied."
+            exit 0
+         else
+            echo "Unknown error copying key"
+            exit 1
+         fi
+      fi
+
+
+   else
+      echo "Unknown key copy direction: $key_copy - must be either 'send' or 'get'"
+      exit 1
+   
+   fi
+fi
+
 if [ $verbose -gt 0 ] ; then
    echo "Method: $copy_method"
    echo "SSH Command: $bbedit_ssh_command"
    echo "BBEdit Command: $bbedit_command"
    echo "Files: $edit_files"
 fi
+
 
 if [ $copy_method = "expan" ]; then
 
@@ -246,7 +342,7 @@ elif [ $copy_method = "rsync" ]; then
    done
 
 else
-   echo "Unknown copy metehod: $copy_method"
+   echo "Unknown copy method: $copy_method"
    exit 1
    
 fi
