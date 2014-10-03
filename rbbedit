@@ -28,6 +28,7 @@ bbedit_wait_args=" --wait --resume"
 bbedit_wait="$bbedit_wait_args"
 local_key_identity=""
 bbedit_key_identity=""
+yes_agree=""
 verbose=0
 
 # get user defaults, can set user defaults for any of the above settings
@@ -41,7 +42,7 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts u:h:p:m:x:k:i:wWv opt
+while getopts u:h:p:m:x:k:i:y:wWv opt
 do case "$opt" in
    u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
@@ -55,7 +56,9 @@ do case "$opt" in
    w) bbedit_wait="$bbedit_wait_args";;
    W) bbedit_wait="";;
    v) verbose=1;;
+   y) yes_agree="$OPTARG";;
   \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
+      echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] file ..."
       exit 1;;
    esac
 done
@@ -111,6 +114,11 @@ bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
 
 # Add bbedit_ssh_user (if set) to bbedit_ssh_host 
 if [ ! -z "$key_copy" ] ; then
+   if [ "$yes_agree" != 'understood' ] ; then
+         echo "Please be aware of the implications of copying SSH public keys. Read the README at https://github.com/cngarrison/rbbedit"
+#          echo "You must give your undestanding of the implications of copying SSH public keys. Read the README at https://github.com/cngarrison/rbbedit"
+#          exit 1
+   fi
 
    ssh_copy_id_command=""
    if [ $key_copy = "send" -o $key_copy = "put" ]; then
@@ -133,7 +141,7 @@ if [ ! -z "$key_copy" ] ; then
       fi
 
       if ${ssh_copy_id_command}; then
-         echo "Key copied."
+         echo "Key copied. Be sure to check contents of ~/.ssh/authorized_keys on BBEdit workstation."
          exit 0
       else
          echo "Unknown error copying key"
@@ -161,7 +169,7 @@ if [ ! -z "$key_copy" ] ; then
       fi
 
       if ${ssh_copy_id_command}; then
-         echo "Key copied."
+         echo "Key copied. Be sure to check contents of local ~/.ssh/authorized_keys on server host."
          exit 0
       else
          echo "Unknown error copying key, trying fallback method"
@@ -180,7 +188,7 @@ if [ ! -z "$key_copy" ] ; then
          echo $bbedit_ssh_key >> ~/.ssh/authorized_keys
          
          if [ ! -z "$bbedit_ssh_key" ]; then
-            echo "Key copied."
+            echo "Key copied. Be sure to check contents of local ~/.ssh/authorized_keys on server host."
             exit 0
          else
             echo "Unknown error copying key"
