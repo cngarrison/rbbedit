@@ -12,6 +12,7 @@
 # v0.4 Better support for `sh` on different platforms
 # v0.5 Command option to send or get SSH keys to/from BBEdit workstation
 # v0.6 Installer script and command option to self-update script
+# v0.7 Add 'ftp' as a copy method
 #-----------------------------------------------------------------------
 
 bbedit_ssh_user=""
@@ -19,7 +20,8 @@ bbedit_ssh_host=""
 bbedit_ssh_port=""
 local_ssh_copy_id_command="ssh-copy-id"
 bbedit_ssh_copy_id_command="/usr/local/bin/ssh-copy-id"
-copy_method="sftp" # scp | expan | rsync | sftp
+copy_method="sftp" # scp | expan | rsync | sftp | ftp
+ftp_absolute=0
 expan_volume=""
 bbedit_wait_args=" --wait --resume"
 bbedit_wait="$bbedit_wait_args"
@@ -56,7 +58,7 @@ do case "$opt" in
    v) verbose=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
-  \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
+  \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
       echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] file ..."
       exit 1;;
    esac
@@ -295,6 +297,41 @@ elif [ $copy_method = "sftp" ]; then
          fi
 
          $bbedit_ssh_command $bbedit_command "sftp://$USER@$HOSTNAME/$abs_path"
+      fi
+
+   done
+
+elif [ $copy_method = "ftp" ]; then
+
+   for i in $edit_files
+   do
+      abs_path=`readlink -n -f $i`
+
+      if [ ! -r "$abs_path" ] ; then
+         echo "File/dir not found, or is not readable: $abs_path"
+
+      else
+         if [ -z "$HOSTNAME" ] ; then
+            HOSTNAME=`hostname`
+         fi
+
+         if [ -d "$abs_path" ] ; then
+            abs_path="$abs_path/"
+         fi
+
+         if [ $ftp_absolute -eq 0 ]; then
+            ## assume ftp server has chrooted to user's HOME dir
+            ## so strip $HOME/ from beginning of path
+            rel_path=${abs_path#$HOME/}
+         else
+            rel_path=$abs_path
+         fi
+
+         if [ $verbose -gt 0 ] ; then
+            echo "Editing file: $abs_path using ftp://$USER@$HOSTNAME/$rel_path"
+         fi
+
+         $bbedit_ssh_command $bbedit_command "ftp://$USER@$HOSTNAME/$rel_path"
       fi
 
    done

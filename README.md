@@ -86,14 +86,14 @@ Script options
 * `-u username`: workstation/ssh user; specify username to use in hostname argument for ssh command
 * `-h hostname`: workstation/ssh host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
 * `-p port`: workstation/ssh port; connect to ssh using port other than 22
-* `-m copy-method`: `sftp | expan | scp | rsync`  - method used to copy files between hosts
+* `-m copy-method`: `sftp | ftp | expan | scp | rsync`  - method used to copy files between hosts
 * `-x expandrive-volume`: volume name as configured in drives list of ExpanDrive, implies `-m expan`
 * `-k copy-direction`: `get | send`  - direction to copy the SSH key
 * `-i identity-file`: path to identity file if `ssh-copy-id` can't find default public key file
 * `-y understood`: confirmation that you understand the implication of the 'copy SSH public key' command *(not required in current version)*
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
-* `-w`: Disable BBEdit wait mode (only sftp & expan methods)
+* `-w`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
 * `-+`: self-update
 * `-?`: help usage
 
@@ -107,7 +107,7 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	bbedit_ssh_host=""
 	bbedit_ssh_port=""
 		
-	copy_method="sftp" # scp | expan | rsync | sftp
+	copy_method="sftp" # scp | expan | rsync | sftp | ftp
 	expan_volume=""
 	
 	bbedit_wait_args=" --wait --resume"
@@ -133,6 +133,8 @@ Copy Methods
 
 The default copy method is 'sftp'. The 'sftp' method will construct an sftp url and use `bbedit` to open the file using BBEdit's built-in SFTP functionality.
 
+The 'ftp' copy method is almost identical to the 'sftp' method. The difference is that the home directory will be stripped from the filename, under the assumption that the FTP server is chrooting connections. So a relative path for the filename is used, if the first part of the path matches `$HOME`. You can disable the relative path behaviour by setting `ftp_absolute=1` in your `~/.rbbedit` file.
+
 The 'scp' method uses `scp` to copy each file to edit to the user's `TMPDIR`, then opens the file using `bbedit`. Once the file closes (editing is finished) then `scp` is used to copy file back to the server. 
 
 The 'rsync' method is identical to 'scp' except that `rsync` is used to copy the file each direction.
@@ -143,7 +145,7 @@ All the commands sent from server to the workstation use ssh.
 
 Multiple files can be specified at once. Only one file will opened/edited at a time. 
 
-Only files can be specified for `scp` and `rsync` methods, while the `sftp` and `expan` methods will also open directories.
+Only files can be specified for `scp` and `rsync` methods, while the `sftp`, `ftp` and `expan` methods will also open directories.
 
 SSH Key Copy
 ------------
