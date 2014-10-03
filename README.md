@@ -94,6 +94,8 @@ Script options
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
 * `-w`: Disable BBEdit wait mode (only sftp & expan methods)
+* `-+`: self-update
+* `-?`: help usage
 
 #### User Defaults
 
@@ -166,6 +168,11 @@ If the SSH identity file containing the public key cannot be found, you can spec
 
 The contents of `~/.ssh/authorized_keys` on both BBEdit workstation and server host should be checked after running either the `get` or `send` key copy option. 
  
+Self Updating
+------------
+
+Use the `-+` option to update `rbbedit` using the latest version from GitHub. The update is done by downloading the install.sh script and running it. 
+
 Known Issues
 ------------
 

@@ -11,10 +11,23 @@ if [[ $(id -u) != 0 ]]; then
 	fi
 fi
 
-if git ls-files >& /dev/null &&  [[ -f rbbedit ]]; then
-	$SUDO cp rbbedit /usr/local/bin/rbbedit || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
-else
-	$SUDO curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit -o /usr/local/bin/rbbedit || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
-	$SUDO chmod +x /usr/local/bin/rbbedit || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+if [ ! -z $RBBEDIT_INSTALL_PATH ]; then
+	rbbedit_path=$RBBEDIT_INSTALL_PATH
+else 
+	rbbedit_path="/usr/local/bin/rbbedit"
 fi
-echo "Installed rbbedit into /usr/local/bin."; exit 0;
+
+if git ls-files >& /dev/null &&  [[ -f rbbedit ]]; then
+	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+else
+	$SUDO curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit -o $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+	$SUDO chmod +x $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+fi
+install_path=`dirname $rbbedit_path`
+echo "Installed rbbedit into $install_path."; exit 0;
+
+
+# Local Variables:
+# tab-width: 3
+# x-auto-expand-tabs: true
+# End:

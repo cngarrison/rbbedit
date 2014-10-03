@@ -30,6 +30,7 @@ local_key_identity=""
 bbedit_key_identity=""
 yes_agree=""
 verbose=0
+self_update=0  #don't set this to true in ~/.rbbedit, really, just don't
 
 # get user defaults, can set user defaults for any of the above settings
 if [ -r ~/.rbbedit ] ; then
@@ -38,11 +39,11 @@ fi
 
 # Check that at least one argument was specified
 if [ $# -lt 1 ] ; then
-   echo "You must specify at least 1 file name."
+   echo "You must specify at least 1 file name or option."
    exit 1
 fi
 
-while getopts u:h:p:m:x:k:i:y:wWv opt
+while getopts u:h:p:m:x:k:i:y:wWv+? opt
 do case "$opt" in
    u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
@@ -57,6 +58,7 @@ do case "$opt" in
    W) bbedit_wait="";;
    v) verbose=1;;
    y) yes_agree="$OPTARG";;
+  \+) self_update=1;;
   \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
       echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] file ..."
       exit 1;;
@@ -66,6 +68,33 @@ done
 shift_args=$(( $OPTIND-1 ))
 shift $shift_args
 edit_files=$@
+
+
+if [ $self_update -gt 0 ] ; then
+   echo "Script will update itself using the installer at https://github.com/cngarrison/rbbedit"
+
+   # Write update script
+   cat > update.sh << EOF
+#!/bin/bash
+echo "Performing self-update..."
+# Use 'wget' to download installer and pipe to 'sh'
+export RBBEDIT_INSTALL_PATH="$0"
+EOF
+   if [ $verbose -gt 0 ] ; then
+      echo "wget -O - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
+   else
+      echo "wget -O - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
+   fi
+   cat >> update.sh << EOF
+echo "Done."
+rm \$0
+EOF
+
+   echo "Inserting update process..."
+   exec /bin/bash update.sh
+
+   exit 0;
+fi
 
 # Check that we have copy method
 if [ -z "$copy_method" ] ; then
