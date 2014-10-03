@@ -16,15 +16,17 @@ if [ ! -z $RBBEDIT_INSTALL_PATH ]; then
 else 
 	rbbedit_path="/usr/local/bin/rbbedit"
 fi
+install_base=`basename $rbbedit_path`
 install_path=`dirname $rbbedit_path`
 
 if git ls-files >& /dev/null &&  [[ -f rbbedit ]]; then
-	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
+	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install $install_base into $install_path"; exit 1; }
 else
-	$SUDO curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit -o $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
-	$SUDO chmod +x $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
+# 	$SUDO wget --no-check-certificate -O $rbbedit_path https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit || { echo "Failed to install $install_base into $install_path"; exit 1; }
+	$SUDO curl -L --insecure -o $rbbedit_path https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit || { echo "Failed to install $install_base into $install_path"; exit 1; }
+	$SUDO chmod +x $rbbedit_path || { echo "Failed to chmod rbbedit at $rbbedit_path"; exit 1; }
 fi
-echo "Installed rbbedit into $install_path"; exit 0;
+echo "Installed $install_base into $install_path"; exit 0;
 
 
 # Local Variables:

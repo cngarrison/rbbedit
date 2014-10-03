@@ -76,13 +76,13 @@ if [ $self_update -gt 0 ] ; then
    cat > update.sh << EOF
 #!/bin/bash
 echo "Performing self-update..."
-# Use 'wget' to download installer and pipe to 'sh'
+# Use 'curl' to download installer and pipe to 'sh'
 export RBBEDIT_INSTALL_PATH="$0"
 EOF
    if [ $verbose -gt 0 ] ; then
-      echo "wget -O - --no-check-certificate https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
+      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
    else
-      echo "wget -O - --no-check-certificate https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
+      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
    fi
    cat >> update.sh << EOF
 echo "Done."
