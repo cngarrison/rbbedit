@@ -59,17 +59,25 @@ Installation
 
 #### Server Host
 
-* Copy `rbbedit` anywhere in `PATH`:
-* Or install from GitHub:
+* Automatic installation with: 
+  * `curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh`
+* Or install manually from GitHub:
   * `wget https://github.com/cngarrison/rbbedit/raw/master/rbbedit`
   * `chmod 755 rbbedit`
+  * Copy `rbbedit` somewhere in `PATH`
+  * `cp rbbedit /usr/local/bin/`
+* Or clone from GitHub:
+  * `git clone https://github.com/cngarrison/rbbedit.git`
+  * `cd rbbedit`
+  * `./install.sh`
 * Create ssh key pair for user account (unless already done)
+  * `ssh-keygen`
 
 #### BBEdit workstation
 
 * Enable ssh (remote login)
 * Configure firewall and port forwarding to allow ssh connections
-* Copy ssh public key from server(s) to .ssh/authorized_keys
+* Copy ssh public key from server(s) to .ssh/authorized_keys (keys can be copied with the `-k` option)
 
 
 Script options
