@@ -16,14 +16,14 @@ if [ ! -z $RBBEDIT_INSTALL_PATH ]; then
 else 
 	rbbedit_path="/usr/local/bin/rbbedit"
 fi
+install_path=`dirname $rbbedit_path`
 
 if git ls-files >& /dev/null &&  [[ -f rbbedit ]]; then
-	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
 else
-	$SUDO curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit -o $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
-	$SUDO chmod +x $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
+	$SUDO curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit -o $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
+	$SUDO chmod +x $rbbedit_path || { echo "Failed to install rbbedit into $install_path"; exit 1; }
 fi
-install_path=`dirname $rbbedit_path`
 echo "Installed rbbedit into $install_path"; exit 0;
 
 
