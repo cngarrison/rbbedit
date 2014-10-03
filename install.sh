@@ -24,7 +24,7 @@ else
 	$SUDO chmod +x $rbbedit_path || { echo "Failed to install rbbedit into /usr/local/bin."; exit 1; }
 fi
 install_path=`dirname $rbbedit_path`
-echo "Installed rbbedit into $install_path."; exit 0;
+echo "Installed rbbedit into $install_path"; exit 0;
 
 
 # Local Variables:

@@ -4,17 +4,14 @@
 # Copyright:  Copyright (c) 2014 Charlie Garrison
 #             All Rights Reserved.
 # Created on: 2014-09-01
-#  $Revision: $
-#    $Author: $
-#      $Date: $
 #    Purpose: Script to edit local files on remote workstation using BBEdit
 #-----------------------------------------------------------------------
-# $Log: $
 # v0.1 Requires ExpanDrive for remote volume mounting
 # v0.2 Parse ARGS using getopts
 # v0.3 Multiple copy methods supported, absolute or relative paths, better error handling
 # v0.4 Better support for `sh` on different platforms
 # v0.5 Command option to send or get SSH keys to/from BBEdit workstation
+# v0.6 Installer script and command option to self-update script
 #-----------------------------------------------------------------------
 
 bbedit_ssh_user=""
