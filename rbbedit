@@ -80,9 +80,9 @@ echo "Performing self-update..."
 export RBBEDIT_INSTALL_PATH="$0"
 EOF
    if [ $verbose -gt 0 ] ; then
-      echo "wget -O - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
+      echo "wget -O - --no-check-certificate https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
    else
-      echo "wget -O - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
+      echo "wget -O - --no-check-certificate https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
    fi
    cat >> update.sh << EOF
 echo "Done."
