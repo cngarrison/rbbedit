@@ -121,6 +121,19 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	
 	verbose=0
 
+Set default for username on BBEdit workstation:
+
+	echo 'bbedit_ssh_user="<workstation-username"' >> ~/.rbbedit
+
+Set default copy method to 'ftp':
+
+	echo 'copy_method="ftp"' >> ~/.rbbedit
+
+Disable the `--wait` option for `bbedit`:
+
+	echo 'bbedit_wait=""' >> ~/.rbbedit
+
+
 #### Set as EDITOR
 
 Use rbbedit as your EDITOR, eg:
