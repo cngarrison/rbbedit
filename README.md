@@ -9,27 +9,27 @@ Edit local (server) files on remote (users) workstation using [BBEdit][].
 Usage
 -----
 
-Connect to server-host from the BBEdit workstation.
+Connect to `server-host` from the BBEdit workstation.
 
 	workstation$ ssh server-host
 
-Open filename on workstation using default copy method (sftp).
+Open `filename` in BBEdit on workstation, using default copy method (sftp).
 
 	server-host$ rbbedit filename
 
-Open filename on workstation, connecting to workstation as 'myuser'.
+Open `filename` in BBEdit, connecting to workstation as `myuser`.
 
 	server-host$ rbbedit -u myuser filename
 
-Open filename on workstation using scp method.
+Open `filename` in BBEdit, using scp method.
 
 	server-host$ rbbedit -m scp filename
 
-Open filename on workstation using ExpanDrive.
+Open `filename` in BBEdit, using ExpanDrive with volume named `expandrive-volume`.
 
 	server-host$ rbbedit -x expandrive-volume filename
 
-Send SSH public key from server-host to workstation.
+Send SSH public key from `server-host` to workstation.
 
 	server-host$ rbbedit -u myuser -k send
 
@@ -43,15 +43,16 @@ Requirements
 
 #### Local machine
 
-* `sshd` must be enabled with firewall and port forwarding configured to allow access to BBEdit workstation
+* `sshd` must be enabled, and if needed, with firewall and port forwarding configured to allow access to BBEdit workstation
 * BBEdit command line utilities
+* SSH keys for user account *(to avoid entering password repeatedly)*
 
 #### Remote machine
 
 * `sh`
 * `ssh`
-* common unix utilities (such as `basename`)
-* ssh keys for user account (to avoid entering workstation password)
+* common unix utilities (such as `basename`, `dirname`, `curl`)
+* SSH keys for user account *(to avoid entering password repeatedly)*
 
 
 Installation
@@ -70,22 +71,22 @@ Installation
   * `git clone https://github.com/cngarrison/rbbedit.git`
   * `cd rbbedit`
   * `./install.sh`
-* Create ssh key pair for user account (unless already done)
+* Create SSH key pair for user account (unless already done)
   * `ssh-keygen`
 
 #### BBEdit workstation
 
-* Enable ssh (remote login)
-* Configure firewall and port forwarding to allow ssh connections
-* Copy ssh public key from server(s) to .ssh/authorized_keys (keys can be copied with the `-k` option)
+* Enable SSH (remote login)
+* Configure firewall and port forwarding to allow SSH connections
+* Copy SSH public key from server(s) to .ssh/authorized_keys (keys can be copied with the `-k` option)
 
 
 Script options
 --------------
 
-* `-u username`: workstation/ssh user; specify username to use in hostname argument for ssh command
-* `-h hostname`: workstation/ssh host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
-* `-p port`: workstation/ssh port; connect to ssh using port other than 22
+* `-u username`: workstation/SSH user; specify username to use in hostname argument for SSH command
+* `-h hostname`: workstation/SSH host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
+* `-p port`: workstation/SSH port; connect to SSH using port other than 22
 * `-m copy-method`: `sftp | ftp | expan | scp | rsync`  - method used to copy files between hosts
 * `-x expandrive-volume`: volume name as configured in drives list of ExpanDrive, implies `-m expan`
 * `-k copy-direction`: `get | send`  - direction to copy the SSH key
@@ -154,7 +155,7 @@ The 'rsync' method is identical to 'scp' except that `rsync` is used to copy the
 
 The 'expan' method will instruct ExpanDrive on the workstation to mount `expandrive-volume`, and then opens the file using `bbedit`. The script can't get response indicating whether ExpanDrive has finished mounting the volume successfully, other than checking path exists, so we just sleep for 3 seconds and hope for the best.
 
-All the commands sent from server to the workstation use ssh.
+All the commands sent from server to the workstation use `ssh`.
 
 Multiple files can be specified at once. Only one file will opened/edited at a time. 
 
