@@ -9,33 +9,33 @@ Edit local (server) files on remote (users) workstation using [BBEdit][].
 Usage
 -----
 
-	workstation$ ssh server-host
-
 Connect to server-host from the BBEdit workstation.
 
-	server-host$ rbbedit filename
+	workstation$ ssh server-host
 
 Open filename on workstation using default copy method (sftp).
 
-	server-host$ rbbedit -u myuser filename
+	server-host$ rbbedit filename
 
 Open filename on workstation, connecting to workstation as 'myuser'.
 
-	server-host$ rbbedit -m scp filename
+	server-host$ rbbedit -u myuser filename
 
 Open filename on workstation using scp method.
 
-	server-host$ rbbedit -x expandrive-volume filename
+	server-host$ rbbedit -m scp filename
 
 Open filename on workstation using ExpanDrive.
 
-	server-host$ rbbedit -u myuser -k send
+	server-host$ rbbedit -x expandrive-volume filename
 
 Send SSH public key from server-host to workstation.
 
-	server-host$ rbbedit -u myuser -k get
+	server-host$ rbbedit -u myuser -k send
 
 Get SSH public key from workstation.
+
+	server-host$ rbbedit -u myuser -k get
 
 
 Requirements
@@ -165,7 +165,7 @@ SSH Key Copy
 
 __WARNING: *Be very sure you understand the implications of copying SSH public keys between hosts.*__ You could easily, and unitentionally,  allow user access between hosts for more than just editing files with BBEdit. This key copy feature has been added as a convenience for the `ssh-copy-id` command. Use it only if you understand what is happening.
 
-The key copy feature depends on the `ssh-copy-id` command. It is not installed by default on OSX systems. I suggest installing the `ssh-copy-id-for-OSX` version from GitHub:
+The key copy feature depends on the `ssh-copy-id` command. It is not installed by default on OSX systems. I suggest installing the `ssh-copy-id-for-OSX` [version from GitHub](https://github.com/beautifulcode/ssh-copy-id-for-OSX):
 
 	curl -L https://raw.githubusercontent.com/beautifulcode/ssh-copy-id-for-OSX/master/install.sh | sh
 
