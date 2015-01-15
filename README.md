@@ -92,6 +92,7 @@ Script options
 * `-k copy-direction`: `get | send`  - direction to copy the SSH key
 * `-i identity-file`: path to identity file if `ssh-copy-id` can't find default public key file
 * `-y understood`: confirmation that you understand the implication of the 'copy SSH public key' command *(not required in current version)*
+* `-b /path/to/bbedit`: path to `bbedit` on the workstation
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
 * `-w`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
@@ -111,6 +112,7 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	copy_method="sftp" # scp | expan | rsync | sftp | ftp
 	expan_volume=""
 	
+	bbedit_prog="/usr/local/bin/bbedit"
 	bbedit_wait_args=" --wait --resume"
 	bbedit_wait="$bbedit_wait_args"
 	
@@ -129,6 +131,10 @@ Set default for username on BBEdit workstation:
 Set default copy method to 'ftp':
 
 	echo 'copy_method="ftp"' >> ~/.rbbedit
+
+Set path for `bbedit`:
+
+	echo 'bbedit_prog="/usr/bin/bbedit"' >> ~/.rbbedit
 
 Disable the `--wait` option for `bbedit`:
 

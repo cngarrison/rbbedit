@@ -13,6 +13,7 @@
 # v0.5 Command option to send or get SSH keys to/from BBEdit workstation
 # v0.6 Installer script and command option to self-update script
 # v0.7 Add 'ftp' as a copy method
+# v0.8 Command option to set path to `bbedit`; default changed to /usr/local/bin/bbedit
 #-----------------------------------------------------------------------
 
 bbedit_ssh_user=""
@@ -25,6 +26,7 @@ ftp_absolute=0
 expan_volume=""
 bbedit_wait_args=" --wait --resume"
 bbedit_wait="$bbedit_wait_args"
+bbedit_prog="/usr/local/bin/bbedit"
 local_key_identity=""
 bbedit_key_identity=""
 yes_agree=""
@@ -55,6 +57,7 @@ do case "$opt" in
       bbedit_key_identity="$OPTARG";;
    w) bbedit_wait="$bbedit_wait_args";;
    W) bbedit_wait="";;
+   b) bbedit_prog="$OPTARG";;
    v) verbose=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
@@ -137,7 +140,7 @@ if [ $copy_method = "scp" -o $copy_method = "rsync" ] ; then
    fi
 fi
 
-bbedit_command="/usr/bin/bbedit $bbedit_wait"
+bbedit_command="$bbedit_prog $bbedit_wait"
 bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
 
 # Add bbedit_ssh_user (if set) to bbedit_ssh_host 
