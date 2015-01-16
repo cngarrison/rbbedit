@@ -110,7 +110,7 @@ if [ -z "$bbedit_ssh_host" ] ; then
 fi
 # Set bbedit_ssh_host from `who` if still not set
 if [ -z "$bbedit_ssh_host" ] ; then
-   bbedit_ssh_host=`who | awk 'NR==1{ print $5}' | sed 's/[()]//g'`
+   bbedit_ssh_host=`who -m | awk 'NR==1{ print $5}' | sed 's/[()]//g'`
 fi
 
 # Check that we have ssh host
