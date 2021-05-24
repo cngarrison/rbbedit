@@ -16,6 +16,8 @@
 # v0.8 Command option to set path to `bbedit`; default changed to /usr/local/bin/bbedit
 #-----------------------------------------------------------------------
 
+host_sftp_user=""
+host_sftp_host=""
 bbedit_ssh_user=""
 bbedit_ssh_host=""
 bbedit_ssh_port=""
@@ -46,6 +48,8 @@ fi
 
 while getopts u:h:p:m:x:k:i:y:wWv+? opt
 do case "$opt" in
+   U) host_sftp_user="$OPTARG";;
+   H) host_sftp_host="$OPTARG";;
    u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
    p) bbedit_ssh_port="$OPTARG";;
@@ -287,8 +291,17 @@ elif [ $copy_method = "sftp" ]; then
          echo "File/dir not found, or is not readable: $abs_path"
 
       else
-         if [ -z "$HOSTNAME" ] ; then
-            HOSTNAME=`hostname`
+
+         if [ -z "$host_sftp_user" ] ; then
+            host_sftp_host=$USER
+         fi
+
+         if [ -z "$host_sftp_host" ] ; then
+            if [ -z "$HOSTNAME" ] ; then
+               host_sftp_host=`hostname`
+            else
+               host_sftp_host=$HOSTNAME
+            fi
          fi
 
          if [ -d "$abs_path" ] ; then
@@ -296,10 +309,10 @@ elif [ $copy_method = "sftp" ]; then
          fi
 
          if [ $verbose -gt 0 ] ; then
-            echo "Editing file: $abs_path using sftp://$USER@$HOSTNAME/$abs_path"
+            echo "Editing file: $abs_path using sftp://$host_sftp_user@$host_sftp_host/$abs_path"
          fi
 
-         $bbedit_ssh_command $bbedit_command "sftp://$USER@$HOSTNAME/$abs_path"
+         $bbedit_ssh_command $bbedit_command "sftp://$host_sftp_user@$host_sftp_host/$abs_path"
       fi
 
    done

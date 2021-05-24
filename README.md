@@ -84,6 +84,8 @@ Installation
 Script options
 --------------
 
+* `-U username`: server-host/SFTP user; specify username to use in hostname argument for SFTP command - will default to $USER
+* `-H hostname`: server-host/SFTP host; specify hostname or IP address - will default to $HOSTNAME
 * `-u username`: workstation/SSH user; specify username to use in hostname argument for SSH command
 * `-h hostname`: workstation/SSH host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
 * `-p port`: workstation/SSH port; connect to SSH using port other than 22
@@ -104,6 +106,9 @@ Script options
 All options specified in the users ~/.rbbedit file will be used as defaults. Options specified on the command line will override user defaults.
 
 The following options can be set in ~/.rbbedit file. These are the script default values.
+
+	host_sftp_user=""
+	host_sftp_host=""
 
 	bbedit_ssh_user=""
 	bbedit_ssh_host=""
