@@ -87,9 +87,9 @@ echo "Performing self-update..."
 export RBBEDIT_INSTALL_PATH="$0"
 EOF
    if [ $verbose -gt 0 ] ; then
-      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh" >> update.sh
+      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | bash" >> update.sh
    else
-      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | sh" >> update.sh
+      echo "curl -L --insecure -o - https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh 2>/dev/null | bash" >> update.sh
    fi
    cat >> update.sh << EOF
 echo "Done."
