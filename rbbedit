@@ -293,7 +293,7 @@ elif [ $copy_method = "sftp" ]; then
       else
 
          if [ -z "$host_sftp_user" ] ; then
-            host_sftp_host=$USER
+            host_sftp_user=$USER
          fi
 
          if [ -z "$host_sftp_host" ] ; then
