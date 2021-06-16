@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Installs rbbedit into /usr/local/bin
 # Installer ideas from https://github.com/beautifulcode/ssh-copy-id-for-OSX
 
