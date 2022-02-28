@@ -61,7 +61,7 @@ Installation
 #### Server Host
 
 * Automatic installation with: 
-  * `curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | sh`
+  * `curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | bash`
 * Or install manually from GitHub:
   * `wget https://github.com/cngarrison/rbbedit/raw/master/rbbedit`
   * `chmod 755 rbbedit`
