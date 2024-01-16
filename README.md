@@ -152,6 +152,17 @@ Use rbbedit as your EDITOR, eg:
 
 	export EDITOR="rbbedit -w"
 
+Some programs that use EDITOR don't expect multiple arguments (& editing fails). The solutions is to create a wrapper script and use that for EDITOR.
+
+    cat << 'EOF' > wait_rbbedit
+	#!/bin/sh
+	rbbedit -w "$@"
+	EOF
+	
+	chmod +x wait_rbbedit
+	mv wait_rbbedit /usr/local/bin/wait_rbbedit
+	
+    export EDITOR="wait_rbbedit"
 
 Copy Methods
 ------------
