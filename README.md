@@ -97,7 +97,7 @@ Script options
 * `-b /path/to/bbedit`: path to `bbedit` on the workstation
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
-* `-w`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
+* `-W`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
 * `-+`: self-update
 * `-?`: help usage
 
