@@ -15,6 +15,7 @@
 # v0.7 Add 'ftp' as a copy method
 # v0.8 Command option to set path to `bbedit`; default changed to /usr/local/bin/bbedit
 # v1.0 Command option to request Automation permission from `sshd-keygen-wrapper` to BBEdit
+#      Command option to create a `bbedit-restricted` file for use in `authorized_keys`
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -40,6 +41,7 @@ bbedit_key_identity=""
 yes_agree=""
 verbose=0
 request_perms=0
+copy_restricted=0
 self_update=0  #don't set this to true in ~/.rbbedit, really, just don't
 
 # get user defaults, can set user defaults for any of the above settings
@@ -53,8 +55,7 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts u:h:p:m:x:k:i:y:wWv+? opt
-while getopts u:h:p:m:x:k:i:y:b:wWvP+? opt
+while getopts u:h:p:m:x:k:i:y:b:wWvPR+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
@@ -72,10 +73,11 @@ do case "$opt" in
    b) bbedit_prog="$OPTARG";;
    v) verbose=1;;
    P) request_perms=1;;
+   R) copy_restricted=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
   \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
-      echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] file ..."
+      echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
       exit 1;;
    esac
 done
@@ -173,6 +175,57 @@ if [ $request_perms -gt 0 ] ; then
    fi
 fi
 
+
+if [ $copy_restricted -gt 0 ] ; then
+   echo "Copying bbedit-restricted script to the workstation..."
+
+   # Write bbedit-restricted script to a temporary file
+   cat > "/tmp/bbedit-restricted.sh" << 'EOF'
+#!/opt/homebrew/bin/bash
+
+if [[ -n $SSH_ORIGINAL_COMMAND ]]; then # command given, so run it
+    if [[ $SSH_ORIGINAL_COMMAND == "/usr/bin/osascript -e 'tell application \"BBEdit\""* ]]; then
+        # Allow the specific osascript command with the given arguments
+        exec /bin/sh -c "$SSH_ORIGINAL_COMMAND"
+    elif [[ $SSH_ORIGINAL_COMMAND == */bbedit* || $SSH_ORIGINAL_COMMAND == */bbresults* ]]; then
+        # Allow bbedit and bbresults commands and execute them
+        exec /bin/sh -c "$SSH_ORIGINAL_COMMAND"
+    else
+        # Reject all other commands
+        echo "Only the specific osascript command, bbedit, and bbresults commands are supported:
+$SSH_ORIGINAL_COMMAND"
+    fi
+else # no command, so ignore
+    echo "Only the specific osascript command, bbedit, and bbresults commands are supported"
+fi
+EOF
+
+   bbedit_scp_port_arg=""
+   if [ ! -z "$bbedit_ssh_port" ] ; then
+      bbedit_scp_port_arg="-P $bbedit_ssh_port"
+   fi
+   bbedit_scp_command="scp $bbedit_scp_port_arg -p -q"
+
+   if [ $verbose -gt 0 ] ; then
+      echo "SCP command: $bbedit_scp_command"
+      echo "Local file: /tmp/bbedit-restricted.sh"
+      echo "Copy to: $bbedit_ssh_host:/usr/local/bin/bbedit-restricted"
+   fi
+
+   # Copy bbedit-restricted script to the workstation
+   $bbedit_scp_command "/tmp/bbedit-restricted.sh" $bbedit_ssh_host:/usr/local/bin/bbedit-restricted
+
+   # Remove the temporary file
+   rm "/tmp/bbedit-restricted.sh"
+
+   echo "bbedit-restricted script copied to the workstation at: /usr/local/bin/bbedit-restricted."
+   echo "Please add (or modify) the following line to your ~/.ssh/authorized_keys file on the workstation:"
+   echo "command=\"/usr/local/bin/bbedit-restricted\",no-port-forwarding,no-X11-forwarding ssh-rsa
+AAAAB3NzaC1yc2EAAAADAQC... user@host"
+   exit 0
+fi
+
+
 if [ ! -z "$key_copy" ] ; then
    if [ "$yes_agree" != 'understood' ] ; then
          echo "Please be aware of the implications of copying SSH public keys. Read the README at https://github.com/cngarrison/rbbedit"
@@ -202,6 +255,8 @@ if [ ! -z "$key_copy" ] ; then
 
       if ${ssh_copy_id_command}; then
          echo "Key copied. Be sure to check contents of ~/.ssh/authorized_keys on BBEdit workstation."
+         echo "You can restrict ssh access to only rbbedit - run `rbbedit -R` to copy the `bbedit-restricted` command"
+         echo "to the BBEdit workstation, and then modify ~/.ssh/authorized_keys as instructed."
          exit 0
       else
          echo "Unknown error copying key"
