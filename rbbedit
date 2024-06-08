@@ -14,6 +14,7 @@
 # v0.6 Installer script and command option to self-update script
 # v0.7 Add 'ftp' as a copy method
 # v0.8 Command option to set path to `bbedit`; default changed to /usr/local/bin/bbedit
+# v1.0 Command option to request Automation permission from `sshd-keygen-wrapper` to BBEdit
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -23,6 +24,11 @@ bbedit_ssh_host=""
 bbedit_ssh_port=""
 local_ssh_copy_id_command="ssh-copy-id"
 bbedit_ssh_copy_id_command="/usr/local/bin/ssh-copy-id"
+osascript_command="/usr/bin/osascript"
+osascript_command_script="tell application \"BBEdit\"
+	activate
+	display dialog \"Show me the perms!\" buttons \"Granted\" default button \"Granted\" 
+end tell"
 copy_method="sftp" # scp | expan | rsync | sftp | ftp
 ftp_absolute=0
 expan_volume=""
@@ -33,6 +39,7 @@ local_key_identity=""
 bbedit_key_identity=""
 yes_agree=""
 verbose=0
+request_perms=0
 self_update=0  #don't set this to true in ~/.rbbedit, really, just don't
 
 # get user defaults, can set user defaults for any of the above settings
@@ -47,6 +54,7 @@ if [ $# -lt 1 ] ; then
 fi
 
 while getopts u:h:p:m:x:k:i:y:wWv+? opt
+while getopts u:h:p:m:x:k:i:y:b:wWvP+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
@@ -63,6 +71,7 @@ do case "$opt" in
    W) bbedit_wait="";;
    b) bbedit_prog="$OPTARG";;
    v) verbose=1;;
+   P) request_perms=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
   \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
@@ -147,7 +156,23 @@ fi
 bbedit_command="$bbedit_prog $bbedit_wait"
 bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
 
-# Add bbedit_ssh_user (if set) to bbedit_ssh_host 
+if [ $request_perms -gt 0 ] ; then
+
+   ssh_request_perms_command="$bbedit_ssh_command '$osascript_command -e '\''$osascript_command_script'\'''"
+
+   if [ $verbose -gt 0 ] ; then
+      echo "request-perms command: $ssh_request_perms_command"
+   fi
+
+   if eval "$ssh_request_perms_command"; then
+      echo "Permissions granted on BBEdit workstation."
+      exit 0
+   else
+      echo "Unknown error requesting permissions"
+      exit 1
+   fi
+fi
+
 if [ ! -z "$key_copy" ] ; then
    if [ "$yes_agree" != 'understood' ] ; then
          echo "Please be aware of the implications of copying SSH public keys. Read the README at https://github.com/cngarrison/rbbedit"
