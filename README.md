@@ -1,10 +1,52 @@
 rbbedit
 =======
 
-Edit local (server) files on remote (users) workstation using [BBEdit][].
+Easily edit server files on your workstation using [BBEdit][].
 
 [BBEdit]: http://www.barebones.com/products/bbedit/
 
+**Important Update: Fix for macOS "Automation Permissions"**
+
+A new feature has been added to `rbbedit` to address the issue of missing Automation permissions when running `bbedit`
+from an SSH session. Users can now request Automation permissions by passing the `-P` argument to `rbbedit`. This will
+display a dialog in BBEdit, prompting the user to grant the necessary permissions for `sshd-keygen-wrapper` to control
+BBEdit. The permissions only need to be requested once, to update System Settings. 
+
+Please see the "Requesting Automation Permissions" section below for detailed instructions on how to use this new
+feature.
+
+Unleash the Power of BBEdit for Remote File Editing
+-----------------------------------------------------------
+
+As a developer or sysadmin, you often find yourself working on remote hosts, connected via SSH. While command-line
+editors like vi are available on the server, you miss the rich features and intuitive interface of your favorite text
+editor, BBEdit, on your macOS workstation.
+
+That's where `rbbedit` comes in. This powerful tool bridges the gap between your local BBEdit installation and remote
+file editing needs. With `rbbedit`, you can seamlessly open and edit files residing on remote hosts using the full
+capabilities of BBEdit, right from your macOS workstation.
+
+BBEdit is the leading professional HTML and text editor for macOS, crafted to serve the needs of writers, web authors,
+and software developers. It provides an abundance of features for editing, searching, and manipulating prose, source
+code, and textual data. By leveraging `rbbedit`, you can bring the power of BBEdit to your remote file editing workflow.
+
+Imagine the convenience of editing Apache configuration files, server-side JavaScript, or web page content with the
+familiar and feature-rich interface of BBEdit. No more struggling with command-line editors or transferring files back
+and forth. With `rbbedit`, you can efficiently edit remote files as if they were local, thanks to BBEdit's built-in SFTP
+support.
+
+Whether you're tweaking configuration files, debugging scripts, or updating web content, `rbbedit` streamlines your
+workflow and boosts your productivity. It allows you to leverage the full potential of BBEdit's editing capabilities
+while seamlessly integrating with your remote development environment.
+
+It's important to note that `rbbedit` is designed to open individual files rather than directories. While BBEdit
+supports opening directories, `rbbedit` focuses on providing a smooth experience for editing specific files.
+Additionally, `rbbedit` works with real files on disk and does not support reading from standard input (stdin) in its
+current version.
+
+If you frequently find yourself editing files on remote hosts and yearning for the power and convenience of BBEdit,
+`rbbedit` is the tool you've been looking for. Embrace the efficiency and familiarity of BBEdit for your remote file
+editing needs with `rbbedit`.
 
 Usage
 -----
@@ -28,6 +70,10 @@ Open `filename` in BBEdit, using scp method.
 Open `filename` in BBEdit, using ExpanDrive with volume named `expandrive-volume`.
 
 	server-host$ rbbedit -x expandrive-volume filename
+
+Request permission for `sshd-keygen-wrapper` to control BBEdit.
+
+	server-host$ rbbedit -P
 
 Send SSH public key from `server-host` to workstation.
 
@@ -98,6 +144,8 @@ Script options
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
 * `-W`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
+* `-P`: Request Automation permissions for `sshd-keygen-wrapper` to control BBEdit
+* `-R`: Copy `bbedit-restricted` script to the workstation and display instructions for updating `authorized_keys`
 * `-+`: self-update
 * `-?`: help usage
 
@@ -182,6 +230,68 @@ All the commands sent from server to the workstation use `ssh`.
 Multiple files can be specified at once. Only one file will opened/edited at a time. 
 
 Only files can be specified for `scp` and `rsync` methods, while the `sftp`, `ftp` and `expan` methods will also open directories.
+
+
+Requesting Automation Permissions
+---------------------------------
+
+If you encounter the following error when running `rbbedit` from an SSH session:
+
+```
+You must allow the application which is running `bbedit` to send events to the BBEdit application.
+Please make appropriate changes in your Security & Privacy system preferences,
+or contact your terminal/IDE application's developer for assistance.
+bbedit: error: -1743
+```
+
+You can use the new `-P` argument to request Automation permissions. Run the following command from your SSH session on the server host:
+
+```
+rbbedit -P
+```
+
+This will request a "display dialog" in BBEdit, the process will request Automation permissions. Click "Granted" to complete the request. The `sshd-keygen-wrapper` can now control BBEdit.
+
+After granting the permissions, you should see `sshd-keygen-wrapper` listed in the System Settings -> Privacy ->
+Automation section, as shown in the screenshot below:
+
+![Automation Permissions](automation-perms.png "Automation Permissions")
+
+Once the permissions are granted, you should be able to run `rbbedit` from your SSH session without encountering the
+Automation permissions error.
+
+
+Restricting SSH Access with `bbedit-restricted`
+----------------------------------------------
+
+To enhance security, it's recommended to restrict SSH access to limited commands when using `rbbedit`. The
+`bbedit-restricted` script helps achieve this by allowing only specific `osascript`, `bbedit`, and `bbresults` commands
+to be executed via SSH.
+
+To set up restricted access:
+
+1. Copy the `bbedit-restricted` script to your BBEdit workstation by running the following command from your server:
+
+   ```
+   rbbedit -R
+   ```
+
+   This will copy the `bbedit-restricted` script to the `/usr/local/bin/` directory on your workstation.
+
+2. Update your `~/.ssh/authorized_keys` file on the BBEdit workstation to include the following line:
+
+   ```
+   command="/usr/local/bin/bbedit-restricted",no-port-forwarding,no-X11-forwarding ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... user@host
+   ```
+
+   Replace `ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... user@host` with your actual SSH public key and user@host details.
+
+   This line restricts the SSH access to only execute the `bbedit-restricted` script, which in turn allows only specific
+`osascript`, `bbedit`, and `bbresults` commands.
+
+By using the `bbedit-restricted` script and updating your `authorized_keys` file, you can ensure that SSH access is
+limited to the necessary commands required by `rbbedit`, providing an additional layer of security.
+
 
 SSH Key Copy
 ------------
