@@ -15,6 +15,29 @@ BBEdit. The permissions only need to be requested once, to update System Setting
 Please see the "Requesting Automation Permissions" section below for detailed instructions on how to use this new
 feature.
 
+Table of Contents
+----------------
+- [Overview](#unleash-the-power-of-bbedit-for-remote-file-editing)
+- [Usage](#usage)
+- [Requirements](#requirements)
+  - [Local machine](#local-machine)
+  - [Remote machine](#remote-machine)
+- [Installation](#installation)
+  - [Server Host](#server-host)
+  - [BBEdit workstation](#bbedit-workstation)
+- [Script options](#script-options)
+  - [User Defaults](#user-defaults)
+  - [Set as EDITOR](#set-as-editor)
+- [Copy Methods](#copy-methods)
+- [Requesting Automation Permissions](#requesting-automation-permissions)
+- [Restricting SSH Access](#restricting-ssh-access-with-bbedit-restricted)
+- [SSH Identity Files](#ssh-identity-files)
+- [SSH Key Copy](#ssh-key-copy)
+- [Self Updating](#self-updating)
+- [Known Issues](#known-issues)
+- [Project Home](#project-home)
+- [License](#license)
+
 Unleash the Power of BBEdit for Remote File Editing
 -----------------------------------------------------------
 
@@ -135,6 +158,7 @@ Script options
 * `-u username`: workstation/SSH user; specify username to use in hostname argument for SSH command
 * `-h hostname`: workstation/SSH host; specify hostname or IP address, optionally prefix with USER@, eg. myuser@myworkstation.example.com
 * `-p port`: workstation/SSH port; connect to SSH using port other than 22
+* `-I identity-file`: workstation/SSH identity; private key used for all connections to the workstation (adds `-o IdentitiesOnly=yes`)
 * `-m copy-method`: `sftp | ftp | expan | scp | rsync`  - method used to copy files between hosts
 * `-x expandrive-volume`: volume name as configured in drives list of ExpanDrive, implies `-m expan`
 * `-k copy-direction`: `get | send`  - direction to copy the SSH key
@@ -161,6 +185,7 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	bbedit_ssh_user=""
 	bbedit_ssh_host=""
 	bbedit_ssh_port=""
+	bbedit_ssh_identity=""
 		
 	copy_method="sftp" # scp | expan | rsync | sftp | ftp
 	expan_volume=""
@@ -215,21 +240,29 @@ Some programs that use EDITOR don't expect multiple arguments (& editing fails).
 Copy Methods
 ------------
 
-The default copy method is 'sftp'. The 'sftp' method will construct an sftp url and use `bbedit` to open the file using BBEdit's built-in SFTP functionality.
+| Method | Default | Directory Support | Local Copy | Description |
+|--------|---------|------------------|------------|-------------|
+| `sftp` | ✅ Yes | ✅ Yes | ❌ No | Uses BBEdit's built-in SFTP functionality. Constructs an SFTP URL to directly open remote files. |
+| `ftp` | ❌ No | ✅ Yes | ❌ No | Similar to SFTP but strips home directory from filename for chrooted FTP servers. Can be disabled with `ftp_absolute=1`. |
+| `scp` | ❌ No | ❌ No | ✅ Yes | Copies file to local `TMPDIR`, opens in BBEdit, then copies back after editing. Requires `--wait` option. |
+| `rsync` | ❌ No | ❌ No | ✅ Yes | Like `scp` but uses `rsync` for file transfers. Better for large files. Requires `--wait` option. |
+| `expan` | ❌ No | ✅ Yes | ❌ No | Uses ExpanDrive to mount remote volume. Requires ExpanDrive installation and configured volume. Has 3s mount delay. |
 
-The 'ftp' copy method is almost identical to the 'sftp' method. The difference is that the home directory will be stripped from the filename, under the assumption that the FTP server is chrooting connections. So a relative path for the filename is used, if the first part of the path matches `$HOME`. You can disable the relative path behaviour by setting `ftp_absolute=1` in your `~/.rbbedit` file.
+Key Features:
+- All methods use SSH for command execution
+- Multiple files can be specified but are opened one at a time
+- Directory support varies by method (see table)
+- Local copy methods (`scp`/`rsync`) require the `--wait` option to save changes back to server
 
-The 'scp' method uses `scp` to copy each file to edit to the user's `TMPDIR`, then opens the file using `bbedit`. Once the file closes (editing is finished) then `scp` is used to copy file back to the server. 
+The default copy method is 'sftp', which uses BBEdit's built-in SFTP functionality. Each method has its own advantages:
 
-The 'rsync' method is identical to 'scp' except that `rsync` is used to copy the file each direction.
-
-The 'expan' method will instruct ExpanDrive on the workstation to mount `expandrive-volume`, and then opens the file using `bbedit`. The script can't get response indicating whether ExpanDrive has finished mounting the volume successfully, other than checking path exists, so we just sleep for 3 seconds and hope for the best.
+- Use `sftp` for general purpose remote editing
+- Use `ftp` when working with chrooted FTP servers
+- Use `scp` when you need local file copies
+- Use `rsync` for large files or when you need better transfer resumption
+- Use `expan` when you already have ExpanDrive configured
 
 All the commands sent from server to the workstation use `ssh`.
-
-Multiple files can be specified at once. Only one file will opened/edited at a time. 
-
-Only files can be specified for `scp` and `rsync` methods, while the `sftp`, `ftp` and `expan` methods will also open directories.
 
 
 Requesting Automation Permissions
@@ -291,6 +324,32 @@ To set up restricted access:
 
 By using the `bbedit-restricted` script and updating your `authorized_keys` file, you can ensure that SSH access is
 limited to the necessary commands required by `rbbedit`, providing an additional layer of security.
+
+
+SSH Identity Files
+------------------
+
+If `ssh-agent` holds many keys, SSH offers each in turn and the server may disconnect after `MaxAuthTries` (default 6) with "Too many authentication failures". There are two SSH hops to consider.
+
+#### Server host -> workstation (`rbbedit`)
+
+Set `bbedit_ssh_identity` in `~/.rbbedit` (or pass `-I`):
+
+	bbedit_ssh_identity="~/.ssh/id_ed25519-workstation"
+
+`rbbedit` then adds `-i <file> -o IdentitiesOnly=yes` to every `ssh`, `scp` and `rsync` connection to the workstation (and `-o IdentitiesOnly=yes -o IdentityFile=<file>` for `ssh-copy-id` with `-k send`). A leading `~/` is expanded. This is equivalent to an `IdentityFile` + `IdentitiesOnly yes` entry in the server host's `~/.ssh/config`, which also works.
+
+#### Workstation -> server host (BBEdit SFTP)
+
+For the `sftp` and `ftp` methods, BBEdit makes the connection back to the server host. The `bbedit` command has no option to pass an identity with an `sftp://` URL, so `rbbedit` cannot set it. (The `host_sftp_identity` setting name is reserved for if that changes.) Configure it on the workstation instead, using the `host_sftp_host` alias in `~/.ssh/config`:
+
+	Host my-server
+	  HostName server.example.com
+	  User root
+	  IdentityFile ~/.ssh/id_ed25519-server
+	  IdentitiesOnly yes
+
+Note `IdentityFile` alone only *adds* a key to the list; without `IdentitiesOnly yes` all agent keys are still offered first. Alternatively, set the identity for the server in BBEdit's own settings. A failure here typically appears as `bbedit: error: 22801` ("end-of-file condition was unexpectedly encountered").
 
 
 SSH Key Copy
