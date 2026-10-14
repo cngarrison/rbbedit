@@ -16,6 +16,8 @@
 # v0.8 Command option to set path to `bbedit`; default changed to /usr/local/bin/bbedit
 # v1.0 Command option to request Automation permission from `sshd-keygen-wrapper` to BBEdit
 #      Command option to create a `bbedit-restricted` file for use in `authorized_keys`
+# v1.1 Command option to set SSH identity file for connections to BBEdit workstation (-I / bbedit_ssh_identity)
+#      Fix -U/-H options, rsync SSH port, and key-copy messages
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -23,6 +25,19 @@ host_sftp_host=""
 bbedit_ssh_user=""
 bbedit_ssh_host=""
 bbedit_ssh_port=""
+# Identity file for ssh/scp/rsync connections from this host to the BBEdit workstation.
+# When set, adds `-i <file> -o IdentitiesOnly=yes` so only this key is offered; avoids
+# "Too many authentication failures" when ssh-agent holds many keys. Leading ~/ is expanded.
+bbedit_ssh_identity=""
+# host_sftp_identity -- NOT YET SUPPORTED (reserved name)
+# Intended: identity file BBEdit should use for the workstation -> server-host SFTP connection
+# (sftp/ftp copy methods). The `bbedit` CLI currently has no way to pass an identity with an
+# sftp:// URL, so this cannot be applied. Workaround: on the workstation, add to ~/.ssh/config
+# for the $host_sftp_host alias:  IdentityFile <file>  and  IdentitiesOnly yes
+# (or set the identity on the server in BBEdit's own settings).
+# If `bbedit` gains such an option, add: default var here, `-J` getopts flag, and pass it in
+# the sftp method's `$bbedit_command` call below.
+#host_sftp_identity=""
 local_ssh_copy_id_command="ssh-copy-id"
 bbedit_ssh_copy_id_command="/usr/local/bin/ssh-copy-id"
 osascript_command="/usr/bin/osascript"
@@ -55,13 +70,14 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts u:h:p:m:x:k:i:y:b:wWvPR+? opt
+while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWvPR+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
    u) bbedit_ssh_user="$OPTARG";;
    h) bbedit_ssh_host="$OPTARG";;
    p) bbedit_ssh_port="$OPTARG";;
+   I) bbedit_ssh_identity="$OPTARG";;
    m) copy_method="$OPTARG";;
    x) expan_volume="$OPTARG"
       copy_method="expan";;
@@ -76,8 +92,8 @@ do case "$opt" in
    R) copy_restricted=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
-  \?) echo >&2 "Usage: $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
-      echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
+  \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
+      echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
       exit 1;;
    esac
 done
@@ -146,6 +162,18 @@ if [ ! -z "$bbedit_ssh_port" ] ; then
    bbedit_ssh_port_arg="-p $bbedit_ssh_port"
 fi
 
+# Identity file for connections to workstation; IdentitiesOnly stops ssh-agent offering every key
+bbedit_ssh_identity_arg=""
+bbedit_ssh_copy_id_identity_arg=""
+if [ ! -z "$bbedit_ssh_identity" ] ; then
+   case "$bbedit_ssh_identity" in
+      "~/"*) bbedit_ssh_identity="$HOME/${bbedit_ssh_identity#\~/}";;
+   esac
+   bbedit_ssh_identity_arg="-i $bbedit_ssh_identity -o IdentitiesOnly=yes"
+   # ssh-copy-id uses -i for the key being installed, so pass login identity via -o
+   bbedit_ssh_copy_id_identity_arg="-o IdentitiesOnly=yes -o IdentityFile=$bbedit_ssh_identity"
+fi
+
 # scp and rsync methods require bbedit_wait
 if [ $copy_method = "scp" -o $copy_method = "rsync" ] ; then
    # if bbedit_wait is already set, then keep supplied value
@@ -156,7 +184,7 @@ if [ $copy_method = "scp" -o $copy_method = "rsync" ] ; then
 fi
 
 bbedit_command="$bbedit_prog $bbedit_wait"
-bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_host "
+bbedit_ssh_command="ssh $bbedit_ssh_port_arg $bbedit_ssh_identity_arg $bbedit_ssh_host "
 
 if [ $request_perms -gt 0 ] ; then
 
@@ -204,7 +232,7 @@ EOF
    if [ ! -z "$bbedit_ssh_port" ] ; then
       bbedit_scp_port_arg="-P $bbedit_ssh_port"
    fi
-   bbedit_scp_command="scp $bbedit_scp_port_arg -p -q"
+   bbedit_scp_command="scp $bbedit_scp_port_arg $bbedit_ssh_identity_arg -p -q"
 
    if [ $verbose -gt 0 ] ; then
       echo "SCP command: $bbedit_scp_command"
@@ -220,8 +248,7 @@ EOF
 
    echo "bbedit-restricted script copied to the workstation at: /usr/local/bin/bbedit-restricted."
    echo "Please add (or modify) the following line to your ~/.ssh/authorized_keys file on the workstation:"
-   echo "command=\"/usr/local/bin/bbedit-restricted\",no-port-forwarding,no-X11-forwarding ssh-rsa
-AAAAB3NzaC1yc2EAAAADAQC... user@host"
+   echo "command=\"/usr/local/bin/bbedit-restricted\",no-port-forwarding,no-X11-forwarding ssh-rsa AAAAB3NzaC1yc2EAAAADAQC... user@host"
    exit 0
 fi
 
@@ -242,9 +269,9 @@ if [ ! -z "$key_copy" ] ; then
       fi
 
       if [ ! -z "$bbedit_ssh_port_arg" ] ; then
-         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_host $bbedit_ssh_port_arg"
+         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_copy_id_identity_arg $bbedit_ssh_host $bbedit_ssh_port_arg"
       else
-         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_host"
+         ssh_copy_id_command="$local_ssh_copy_id_command $key_identity_arg $bbedit_ssh_copy_id_identity_arg $bbedit_ssh_host"
       fi
 
       if [ $verbose -gt 0 ] ; then
@@ -255,7 +282,7 @@ if [ ! -z "$key_copy" ] ; then
 
       if ${ssh_copy_id_command}; then
          echo "Key copied. Be sure to check contents of ~/.ssh/authorized_keys on BBEdit workstation."
-         echo "You can restrict ssh access to only rbbedit - run `rbbedit -R` to copy the `bbedit-restricted` command"
+         echo "You can restrict ssh access to only rbbedit - run 'rbbedit -R' to copy the 'bbedit-restricted' command"
          echo "to the BBEdit workstation, and then modify ~/.ssh/authorized_keys as instructed."
          exit 0
       else
@@ -444,7 +471,7 @@ elif [ $copy_method = "scp" ]; then
    if [ ! -z "$bbedit_ssh_port" ] ; then
       bbedit_scp_port_arg="-P $bbedit_ssh_port"
    fi
-   bbedit_scp_command="scp $bbedit_scp_port_arg -p -q"
+   bbedit_scp_command="scp $bbedit_scp_port_arg $bbedit_ssh_identity_arg -p -q"
 
    for i in $edit_files
    do
@@ -478,11 +505,9 @@ elif [ $copy_method = "rsync" ]; then
       echo "TMP dir: $bbedit_tmp_dir"
    fi
 
-   bbedit_rsync_port_arg=""
-   if [ ! -z "$bbedit_ssh_port" ] ; then
-      bbedit_rsync_port_arg="--port $bbedit_ssh_port"
-   fi
-   bbedit_rsync_command="rsync $bbedit_rsync_port_arg -pt -q --rsh=ssh"
+   # rsync --port is for rsync daemon; SSH port/identity go in the remote shell command
+   bbedit_rsync_rsh="ssh $bbedit_ssh_port_arg $bbedit_ssh_identity_arg"
+   bbedit_rsync_command="rsync -pt -q"
 
    for i in $edit_files
    do
@@ -499,11 +524,11 @@ elif [ $copy_method = "rsync" ]; then
             echo "Editing file: $abs_path using $bbedit_tmp_dir/$filename"
          fi
 
-         $bbedit_rsync_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
+         $bbedit_rsync_command -e "$bbedit_rsync_rsh" $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
 
          $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
 
-         $bbedit_rsync_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
+         $bbedit_rsync_command -e "$bbedit_rsync_rsh" $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
       fi
 
    done
