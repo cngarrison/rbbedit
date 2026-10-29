@@ -176,6 +176,7 @@ Script options
 * `-y understood`: confirmation that you understand the implication of the 'copy SSH public key' command *(not required in current version)*
 * `-b /path/to/bbedit`: path to `bbedit` on the workstation
 * `-v`: verbose
+* `-V`, `--version`: print the version and exit
 * `-w`: Enable BBEdit wait mode (default)
 * `-W`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
 * `-e`: Run edit hooks (default, when hooks are configured)
