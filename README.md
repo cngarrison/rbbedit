@@ -316,8 +316,10 @@ Hooks run a command for each file edited, for example to update an integrity dat
 They are set in `~/.rbbedit`:
 
 * `pre_edit_hook`: runs before the file is opened in BBEdit. If it exits non-zero, the file is skipped.
-* `post_edit_hook`: runs after the file is closed in BBEdit, only if the file changed (compared with `cksum`).
-  Set `post_edit_hook_always=1` to run it even when the file is unchanged.
+* `post_edit_hook`: runs after the file is closed in BBEdit, only if the file changed: its content differs
+  (compared with `cksum`), or it was written again with the same content, e.g. an edit undone before saving
+  (its ctime moved, checked with `find -cnewer`). With `scp`, copying the file back counts as a write.
+  Set `post_edit_hook_always=1` to run it even when the file is untouched.
 
 Each hook is called with the file's absolute path appended as its last argument. Because `~/.rbbedit` is a shell
 script, a hook can be a command (with its own arguments) or the name of a shell function defined in `~/.rbbedit`.
@@ -328,7 +330,7 @@ These environment variables are also set for the hook:
 | `RBBEDIT_FILE` | absolute path of the file |
 | `RBBEDIT_METHOD` | copy method in use |
 | `RBBEDIT_NEW` | `1` if the file did not exist before `rbbedit` (see [New Files](#new-files)), else `0` |
-| `RBBEDIT_CHANGED` | `1` changed, `0` unchanged, `unknown` for directories (empty for `pre_edit_hook`) |
+| `RBBEDIT_CHANGED` | `1` content changed, `2` written with the same content, `0` untouched, `unknown` for directories (empty for `pre_edit_hook`) |
 
 Hooks are on by default once configured. Use `-E` to skip them for one run, or set `hooks_enabled=0` and use `-e`
 to turn them on when needed.

@@ -24,6 +24,7 @@
 # v1.3 Command option to print the version (-V / --version)
 #      Background wait mode (-B / background_wait=1): return to the prompt at once, and run
 #      post_edit_hook in a detached job when BBEdit closes the file, logging to ~/.rbbedit.log
+# v1.4 post_edit_hook also runs when the file was rewritten with the same content (RBBEDIT_CHANGED=2)
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -438,6 +439,21 @@ file_cksum() {
    fi
 }
 
+# True if the file's status changed (written, replaced, chmod'ed) after the marker file was created.
+# A save with identical content still counts, which matters for hooks that track timestamps (AIDE).
+# Without a marker, or a `find` lacking -cnewer, it says "no" and only cksum decides.
+file_rewritten() {
+   [ -n "$edit_marker" -a -f "$edit_marker" ] || return 1
+   [ -n "$(find "$1" -prune -cnewer "$edit_marker" 2>/dev/null)" ]
+}
+
+remove_edit_marker() {
+   if [ -n "$edit_marker" ] ; then
+      rm -f "$edit_marker"
+      edit_marker=""
+   fi
+}
+
 # Check the file can be edited, run pre_edit_hook, and create the file if it doesn't exist.
 # $1 = absolute path, $2 = path as given, $3 = "file" (regular files only) or "any" (files or dirs)
 # Returns non-zero if the file should be skipped.
@@ -446,6 +462,7 @@ prepare_edit() {
    edit_new=0
    edit_changed=""
    edit_cksum_before=""
+   edit_marker=""
 
    if [ -z "$edit_path" ] ; then
       echo "Directory not found: $2"
@@ -491,6 +508,10 @@ prepare_edit() {
    fi
 
    edit_cksum_before=$(file_cksum "$edit_path")
+   # marks the start of editing, for file_rewritten (after pre_edit_hook and creating a new file)
+   if [ -f "$edit_path" ] ; then
+      edit_marker=`mktemp "${TMPDIR:-/tmp}/rbbedit-mark.XXXXXX" 2>/dev/null` || edit_marker=""
+   fi
    return 0
 }
 
@@ -500,21 +521,27 @@ finish_edit() {
 
    # without --wait, bbedit returns before any editing is done
    if [ -z "$bbedit_wait" ] ; then
+      remove_edit_marker
       if [ $hooks_enabled -gt 0 -a -n "$post_edit_hook" ] ; then
          echo "Not waiting for BBEdit (-W), post_edit_hook not run: $edit_path"
       fi
       return 0
    fi
 
+   # 1 = content changed, 2 = rewritten with the same content, 0 = untouched
    if [ -d "$edit_path" ] ; then
       edit_changed="unknown"
-   elif [ "$(file_cksum "$edit_path")" = "$edit_cksum_before" ] ; then
-      edit_changed=0
-   else
+   elif [ "$(file_cksum "$edit_path")" != "$edit_cksum_before" ] ; then
       edit_changed=1
+   elif file_rewritten "$edit_path" ; then
+      edit_changed=2
+   else
+      edit_changed=0
    fi
+   remove_edit_marker
 
-   if [ $edit_new -gt 0 -a "$edit_changed" = "0" ] ; then
+   # by content: scp copies the file back even when nothing was saved
+   if [ $edit_new -gt 0 -a "$edit_changed" != "1" ] ; then
       rm -f "$edit_path"
       echo "Nothing saved, removed new file: $edit_path"
       return 0
@@ -545,6 +572,7 @@ edit_session() {
    if [ $? -eq 255 ] ; then
       # ssh's own error status: the connection was lost, so editing may not be finished
       echo "Lost connection to the BBEdit workstation, file not copied back and post_edit_hook not run: $1"
+      remove_edit_marker
       return 1
    fi
 
