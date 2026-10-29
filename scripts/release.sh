@@ -27,8 +27,10 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
-  echo "⚠️   You are on branch '$CURRENT_BRANCH', not main/master."
+DEFAULT_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+if [[ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]]; then
+  echo "⚠️   You are on branch '$CURRENT_BRANCH', not $DEFAULT_BRANCH."
   read -r -p "Continue anyway? [y/N] " CONFIRM
   [[ "$CONFIRM" =~ ^[Yy]$ ]] || exit 0
 fi

@@ -137,9 +137,9 @@ Installation
 #### Server Host
 
 * Automatic installation with: 
-  * `curl -L https://raw.githubusercontent.com/cngarrison/rbbedit/master/install.sh | bash`
+  * `curl -fsSL https://github.com/cngarrison/rbbedit/releases/latest/download/install.sh | bash`
 * Or install manually from GitHub:
-  * `wget https://github.com/cngarrison/rbbedit/raw/master/rbbedit`
+  * `curl -fsSLO https://github.com/cngarrison/rbbedit/releases/latest/download/rbbedit`
   * `chmod 755 rbbedit`
   * Copy `rbbedit` somewhere in `PATH`
   * `cp rbbedit /usr/local/bin/`
@@ -149,6 +149,9 @@ Installation
   * `./install.sh`
 * Create SSH key pair for user account (unless already done)
   * `ssh-keygen`
+* Optionally, check a downloaded `rbbedit` was published by this repository's release workflow (needs the GitHub CLI):
+  * `gh attestation verify rbbedit --repo cngarrison/rbbedit`
+  * or compare against the release's `SHA256SUMS`: `sha256sum --ignore-missing -c SHA256SUMS`
 
 #### BBEdit workstation
 
@@ -469,7 +472,7 @@ The contents of `~/.ssh/authorized_keys` on both BBEdit workstation and server h
 Self Updating
 ------------
 
-Use the `-+` option to update `rbbedit` using the latest version from GitHub. The update is done by downloading the install.sh script and running it. 
+Use the `-+` option to update `rbbedit` to the latest GitHub release. The update is done by downloading the release's install.sh script and running it. 
 
 Known Issues
 ------------
@@ -494,13 +497,13 @@ The changelog in the `rbbedit` header is the version source. To make a release:
 		# v1.2 Short description of the change
 		#      Further changes, indented to line up
 
-2. On `master`, run `./scripts/release.sh`. It reads the newest `# vX.Y` entry, shows the release notes, and after
+2. On the default branch, run `./scripts/release.sh`. It reads the newest `# vX.Y` entry, shows the release notes, and after
    confirmation creates an annotated tag `vX.Y` and pushes the branch and tag.
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which checks the tag matches the newest header entry,
-syntax-checks the scripts, and publishes a GitHub release with `rbbedit` and `install.sh` attached. The notes list the
-header entries that are new since the previous tag, then the commits in between. Preview them with
-`./scripts/release-notes.sh HEAD`.
+syntax-checks the scripts, and publishes a GitHub release with `rbbedit`, `install.sh` and `SHA256SUMS` attached,
+plus a signed build provenance attestation for each file. The notes list the header entries that are new since the
+previous tag, then the commits in between. Preview them with `./scripts/release-notes.sh HEAD`.
 
 Project Home
 ------------

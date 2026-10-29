@@ -10,7 +10,9 @@ jobs:
     name: Check & Publish
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # required to create GitHub Releases
+      contents: write       # required to create GitHub Releases
+      id-token: write       # required for build provenance attestations
+      attestations: write
 
     steps:
       - name: Checkout
@@ -36,6 +38,17 @@ jobs:
           dash -n rbbedit
           bash -n install.sh
 
+      - name: Checksums
+        run: sha256sum rbbedit install.sh | tee SHA256SUMS
+
+      # Replaces the old Keybase-signed SIGNED.md: verify with `gh attestation verify <file> --repo <owner>/rbbedit`
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            rbbedit
+            install.sh
+
       - name: Write release notes
         run: |
           ./scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
@@ -47,6 +60,7 @@ jobs:
           files: |
             rbbedit
             install.sh
+            SHA256SUMS
           body_path: ${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
