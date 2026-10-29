@@ -37,6 +37,7 @@ Table of Contents
 - [SSH Key Copy](#ssh-key-copy)
 - [Self Updating](#self-updating)
 - [Known Issues](#known-issues)
+- [Releasing](#releasing)
 - [Project Home](#project-home)
 - [License](#license)
 
@@ -482,6 +483,24 @@ Only real files can be edited (new files are created on open); not text passed v
 There is no simple/reliable way to determine whether ExpanDrive has finished mounting the remote volume, or whether there was an error. Existence of volume's path could be checked; currently the script just sleeps for 3 seconds before trying to open the file.
 
 Copying SSH public keys between hosts should make people uncomfortable. This script only uses commonly accepted methods for copying public keys, so the author doesn't believe the script is adding additional security concerns. But neither does the author believe that using this script to simplify copying SSH public keys should absolve the user from understandind the implications of copying SSH public keys.
+
+Releasing
+---------
+
+The changelog in the `rbbedit` header is the version source. To make a release:
+
+1. Add an entry for the new version to the header, in the same style as the others, and commit it:
+
+		# v1.2 Short description of the change
+		#      Further changes, indented to line up
+
+2. On `master`, run `./scripts/release.sh`. It reads the newest `# vX.Y` entry, shows the release notes, and after
+   confirmation creates an annotated tag `vX.Y` and pushes the branch and tag.
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which checks the tag matches the newest header entry,
+syntax-checks the scripts, and publishes a GitHub release with `rbbedit` and `install.sh` attached. The notes list the
+header entries that are new since the previous tag, then the commits in between. Preview them with
+`./scripts/release-notes.sh HEAD`.
 
 Project Home
 ------------
