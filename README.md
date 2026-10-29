@@ -29,6 +29,8 @@ Table of Contents
   - [User Defaults](#user-defaults)
   - [Set as EDITOR](#set-as-editor)
 - [Copy Methods](#copy-methods)
+- [New Files](#new-files)
+- [Edit Hooks](#edit-hooks)
 - [Requesting Automation Permissions](#requesting-automation-permissions)
 - [Restricting SSH Access](#restricting-ssh-access-with-bbedit-restricted)
 - [SSH Identity Files](#ssh-identity-files)
@@ -89,6 +91,10 @@ Open `filename` in BBEdit, connecting to workstation as `myuser`.
 Open `filename` in BBEdit, using scp method.
 
 	server-host$ rbbedit -m scp filename
+
+Open `filename` and skip any configured edit hooks.
+
+	server-host$ rbbedit -E filename
 
 Open `filename` in BBEdit, using ExpanDrive with volume named `expandrive-volume`.
 
@@ -168,6 +174,8 @@ Script options
 * `-v`: verbose
 * `-w`: Enable BBEdit wait mode (default)
 * `-W`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
+* `-e`: Run edit hooks (default, when hooks are configured)
+* `-E`: Skip edit hooks for this run
 * `-P`: Request Automation permissions for `sshd-keygen-wrapper` to control BBEdit
 * `-R`: Copy `bbedit-restricted` script to the workstation and display instructions for updating `authorized_keys`
 * `-+`: self-update
@@ -199,6 +207,12 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	bbedit_ssh_copy_id_command="/usr/local/bin/ssh-copy-id"
 	bbedit_key_identity=""
 	yes_agree=""
+	
+	pre_edit_hook=""
+	post_edit_hook=""
+	post_edit_hook_always=0
+	hooks_enabled=1
+	create_missing=1
 	
 	verbose=0
 
@@ -263,6 +277,82 @@ The default copy method is 'sftp', which uses BBEdit's built-in SFTP functionali
 - Use `expan` when you already have ExpanDrive configured
 
 All the commands sent from server to the workstation use `ssh`.
+
+
+New Files
+---------
+
+`rbbedit` can open a file that doesn't exist yet, so there's no need to `touch` it first:
+
+	server-host$ rbbedit /etc/nginx/sites-available/new-site.conf
+
+The parent directory must already exist and be writable. `rbbedit` creates an empty file, opens it in BBEdit, and
+when the window is closed removes the file again if nothing was saved (so a mistyped filename doesn't leave an
+empty file behind). This works with every copy method; for `sftp`/`ftp`, BBEdit opens and saves the empty file
+over the connection as usual.
+
+The new file is created by the user running `rbbedit`, with permissions from its `umask`. The clean-up only happens
+in wait mode; with `-W` an unsaved new file stays as an empty file.
+
+To keep the old behaviour (refuse non-existent files), set in `~/.rbbedit`:
+
+	create_missing=0
+
+
+Edit Hooks
+----------
+
+Hooks run a command for each file edited, for example to update an integrity database after changing a config file.
+They are set in `~/.rbbedit`:
+
+* `pre_edit_hook`: runs before the file is opened in BBEdit. If it exits non-zero, the file is skipped.
+* `post_edit_hook`: runs after the file is closed in BBEdit, only if the file changed (compared with `cksum`).
+  Set `post_edit_hook_always=1` to run it even when the file is unchanged.
+
+Each hook is called with the file's absolute path appended as its last argument. Because `~/.rbbedit` is a shell
+script, a hook can be a command (with its own arguments) or the name of a shell function defined in `~/.rbbedit`.
+These environment variables are also set for the hook:
+
+| Variable | Value |
+|----------|-------|
+| `RBBEDIT_FILE` | absolute path of the file |
+| `RBBEDIT_METHOD` | copy method in use |
+| `RBBEDIT_NEW` | `1` if the file did not exist before `rbbedit` (see [New Files](#new-files)), else `0` |
+| `RBBEDIT_CHANGED` | `1` changed, `0` unchanged, `unknown` for directories (empty for `pre_edit_hook`) |
+
+Hooks are on by default once configured. Use `-E` to skip them for one run, or set `hooks_enabled=0` and use `-e`
+to turn them on when needed.
+
+`post_edit_hook` needs BBEdit's wait mode (the default) to know when editing has finished. With `-W` it is not run,
+and a message says so. If a hook fails, `rbbedit` reports it, carries on with the remaining files, and exits with
+status 1.
+
+Hooks run as the user running `rbbedit`, so for files under `/etc` they're usually root's hooks in `/root/.rbbedit`.
+
+#### Example: AIDE
+
+Accept intentional edits into the AIDE database, but first check that the file still matches the database, so
+an edit can't quietly accept a change somebody else made earlier (`aide --check` exits non-zero when it finds
+differences; `--limit` needs AIDE 0.17 or later):
+
+	# ~/.rbbedit
+	rbbedit_aide_check() {
+	   aide --config=/etc/aide/aide.conf --check --limit "^$(printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g')\$" >/dev/null
+	}
+	rbbedit_aide_accept() {
+	   if [ "$RBBEDIT_NEW" = "1" ] ; then
+	      # a new file also changes its directory's mtime
+	      aide-accept --yes "$1" "$(dirname "$1")"
+	   else
+	      aide-accept --yes "$1"
+	   fi
+	}
+	pre_edit_hook="rbbedit_aide_check"
+	post_edit_hook="rbbedit_aide_accept"
+
+Or, without the pre-edit check, simply:
+
+	post_edit_hook="aide-accept --yes"
 
 
 Requesting Automation Permissions
@@ -387,7 +477,7 @@ No error checking is done for any of the `ssh` commands (or 'copy' commands).
 
 To allow copying files back to server for the 'scp' and 'rsync' methods, the `bbedit` `--wait` option must be specified. 
 
-Only real (existing) files can be edited; not text passed via STDIN. 
+Only real files can be edited (new files are created on open); not text passed via STDIN. 
 
 There is no simple/reliable way to determine whether ExpanDrive has finished mounting the remote volume, or whether there was an error. Existence of volume's path could be checked; currently the script just sleeps for 3 seconds before trying to open the file.
 

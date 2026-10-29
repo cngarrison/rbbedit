@@ -18,6 +18,8 @@
 #      Command option to create a `bbedit-restricted` file for use in `authorized_keys`
 # v1.1 Command option to set SSH identity file for connections to BBEdit workstation (-I / bbedit_ssh_identity)
 #      Fix -U/-H options, rsync SSH port, and key-copy messages
+# v1.2 Pre/post edit hooks (pre_edit_hook / post_edit_hook, -e / -E)
+#      Non-existent files are created on open, and removed again if nothing was saved
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -58,6 +60,14 @@ verbose=0
 request_perms=0
 copy_restricted=0
 self_update=0  #don't set this to true in ~/.rbbedit, really, just don't
+# Hooks: commands, or shell functions defined in ~/.rbbedit, run for each file with
+# its absolute path appended as the last argument. See README "Edit Hooks".
+pre_edit_hook=""          # run before the file is opened; non-zero exit skips the file
+post_edit_hook=""         # run after the file is closed in BBEdit (wait mode only)
+post_edit_hook_always=0   # 1 = run post_edit_hook even when the file is unchanged
+hooks_enabled=1           # -e enables, -E disables
+create_missing=1          # open non-existent files as new empty files (parent dir must exist)
+exit_status=0
 
 # get user defaults, can set user defaults for any of the above settings
 if [ -r ~/.rbbedit ] ; then
@@ -70,7 +80,7 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWvPR+? opt
+while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWeEvPR+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
@@ -86,13 +96,15 @@ do case "$opt" in
       bbedit_key_identity="$OPTARG";;
    w) bbedit_wait="$bbedit_wait_args";;
    W) bbedit_wait="";;
+   e) hooks_enabled=1;;
+   E) hooks_enabled=0;;
    b) bbedit_prog="$OPTARG";;
    v) verbose=1;;
    P) request_perms=1;;
    R) copy_restricted=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
-  \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] file ..."
+  \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] [-e|E] file ..."
       echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
       exit 1;;
    esac
@@ -351,7 +363,146 @@ if [ $verbose -gt 0 ] ; then
    echo "SSH Command: $bbedit_ssh_command"
    echo "BBEdit Command: $bbedit_command"
    echo "Files: $edit_files"
+   echo "Hooks: pre_edit_hook=\"$pre_edit_hook\" post_edit_hook=\"$post_edit_hook\" (enabled=$hooks_enabled)"
 fi
+
+
+# Absolute path for a file argument; for a non-existent file resolve its directory instead
+# (BSD readlink -f prints nothing when the file itself is missing)
+abs_edit_path() {
+   if [ -e "$1" ] ; then
+      readlink -n -f "$1"
+   else
+      abs_dir=`readlink -n -f "$(dirname "$1")"`
+      if [ -n "$abs_dir" -a -d "$abs_dir" ] ; then
+         echo "${abs_dir%/}/$(basename "$1")"
+      fi
+   fi
+}
+
+# Run a hook with the file path appended; may be a command or a shell function from ~/.rbbedit
+run_hook() {
+   hook_name="$1"
+   hook_cmd="$2"
+   hook_path="$3"
+
+   if [ $verbose -gt 0 ] ; then
+      echo "Running $hook_name: $hook_cmd $hook_path"
+   fi
+
+   RBBEDIT_FILE="$hook_path"
+   RBBEDIT_METHOD="$copy_method"
+   RBBEDIT_NEW="$edit_new"
+   RBBEDIT_CHANGED="$edit_changed"
+   export RBBEDIT_FILE RBBEDIT_METHOD RBBEDIT_NEW RBBEDIT_CHANGED
+
+   $hook_cmd "$hook_path"
+}
+
+file_cksum() {
+   if [ -f "$1" ] ; then
+      cksum < "$1"
+   fi
+}
+
+# Check the file can be edited, run pre_edit_hook, and create the file if it doesn't exist.
+# $1 = absolute path, $2 = path as given, $3 = "file" (regular files only) or "any" (files or dirs)
+# Returns non-zero if the file should be skipped.
+prepare_edit() {
+   edit_path="$1"
+   edit_new=0
+   edit_changed=""
+   edit_cksum_before=""
+
+   if [ -z "$edit_path" ] ; then
+      echo "Directory not found: $2"
+      return 1
+   fi
+
+   if [ ! -e "$edit_path" ] ; then
+      if [ $create_missing -eq 0 ] ; then
+         echo "File not found: $edit_path"
+         return 1
+      fi
+      edit_dir=`dirname "$edit_path"`
+      if [ ! -d "$edit_dir" -o ! -w "$edit_dir" ] ; then
+         echo "Cannot create new file, directory not found or not writable: $edit_dir"
+         return 1
+      fi
+      edit_new=1
+   elif [ ! -r "$edit_path" ] ; then
+      echo "File/dir is not readable: $edit_path"
+      return 1
+   elif [ "$3" = "file" -a ! -f "$edit_path" ] ; then
+      ## it should be fine working with directories, but there is non-trivial risk when copying data back
+      ## so let's only support editing of single files with this version
+      echo "Not a regular file (directories not supported with $copy_method): $edit_path"
+      return 1
+   fi
+
+   # pre_edit_hook runs before a new file is created, so it sees the filesystem as it was
+   if [ $hooks_enabled -gt 0 -a -n "$pre_edit_hook" ] ; then
+      if ! run_hook pre_edit_hook "$pre_edit_hook" "$edit_path" ; then
+         echo "pre_edit_hook failed, skipping: $edit_path (use -E to skip hooks)"
+         exit_status=1
+         return 1
+      fi
+   fi
+
+   if [ $edit_new -gt 0 ] ; then
+      if ! touch "$edit_path" ; then
+         echo "Cannot create new file: $edit_path"
+         return 1
+      fi
+      echo "New file: $edit_path"
+   fi
+
+   edit_cksum_before=$(file_cksum "$edit_path")
+   return 0
+}
+
+# After BBEdit has closed the file: remove an unsaved new file, then run post_edit_hook if it changed
+finish_edit() {
+   edit_path="$1"
+
+   # without --wait, bbedit returns before any editing is done
+   if [ -z "$bbedit_wait" ] ; then
+      if [ $hooks_enabled -gt 0 -a -n "$post_edit_hook" ] ; then
+         echo "Not waiting for BBEdit (-W), post_edit_hook not run: $edit_path"
+      fi
+      return 0
+   fi
+
+   if [ -d "$edit_path" ] ; then
+      edit_changed="unknown"
+   elif [ "$(file_cksum "$edit_path")" = "$edit_cksum_before" ] ; then
+      edit_changed=0
+   else
+      edit_changed=1
+   fi
+
+   if [ $edit_new -gt 0 -a "$edit_changed" = "0" ] ; then
+      rm -f "$edit_path"
+      echo "Nothing saved, removed new file: $edit_path"
+      return 0
+   fi
+
+   if [ $hooks_enabled -eq 0 -o -z "$post_edit_hook" ] ; then
+      return 0
+   fi
+
+   if [ "$edit_changed" = "0" -a $post_edit_hook_always -eq 0 ] ; then
+      if [ $verbose -gt 0 ] ; then
+         echo "File unchanged, post_edit_hook not run: $edit_path"
+      fi
+      return 0
+   fi
+
+   if ! run_hook post_edit_hook "$post_edit_hook" "$edit_path" ; then
+      echo "post_edit_hook failed: $edit_path"
+      exit_status=1
+   fi
+}
 
 
 if [ $copy_method = "expan" ]; then
@@ -372,19 +523,17 @@ if [ $copy_method = "expan" ]; then
 
    for i in $edit_files
    do
-      abs_path=`readlink -n -f $i`
+      abs_path=`abs_edit_path $i`
 
-      if [ ! -r "$abs_path" ] ; then
-         echo "File/dir not found, or is not readable: $abs_path"
-
-      else
+      if prepare_edit "$abs_path" "$i" any ; then
          if [ $verbose -gt 0 ] ; then
             echo "Editing file: $abs_path using /Volumes/$expan_volume/$abs_path"
          fi
 
          $bbedit_ssh_command $bbedit_command /Volumes/$expan_volume/$abs_path
 
-     fi
+         finish_edit "$abs_path"
+      fi
 
    done
 
@@ -392,12 +541,9 @@ elif [ $copy_method = "sftp" ]; then
 
    for i in $edit_files
    do
-      abs_path=`readlink -n -f $i`
+      abs_path=`abs_edit_path $i`
 
-      if [ ! -r "$abs_path" ] ; then
-         echo "File/dir not found, or is not readable: $abs_path"
-
-      else
+      if prepare_edit "$abs_path" "$i" any ; then
 
          if [ -z "$host_sftp_user" ] ; then
             host_sftp_user=$USER
@@ -411,15 +557,18 @@ elif [ $copy_method = "sftp" ]; then
             fi
          fi
 
+         url_path="$abs_path"
          if [ -d "$abs_path" ] ; then
-            abs_path="$abs_path/"
+            url_path="$abs_path/"
          fi
 
          if [ $verbose -gt 0 ] ; then
-            echo "Editing file: $abs_path using sftp://$host_sftp_user@$host_sftp_host/$abs_path"
+            echo "Editing file: $abs_path using sftp://$host_sftp_user@$host_sftp_host/$url_path"
          fi
 
-         $bbedit_ssh_command $bbedit_command "sftp://$host_sftp_user@$host_sftp_host/$abs_path"
+         $bbedit_ssh_command $bbedit_command "sftp://$host_sftp_user@$host_sftp_host/$url_path"
+
+         finish_edit "$abs_path"
       fi
 
    done
@@ -428,26 +577,24 @@ elif [ $copy_method = "ftp" ]; then
 
    for i in $edit_files
    do
-      abs_path=`readlink -n -f $i`
+      abs_path=`abs_edit_path $i`
 
-      if [ ! -r "$abs_path" ] ; then
-         echo "File/dir not found, or is not readable: $abs_path"
-
-      else
+      if prepare_edit "$abs_path" "$i" any ; then
          if [ -z "$HOSTNAME" ] ; then
             HOSTNAME=`hostname`
          fi
 
+         url_path="$abs_path"
          if [ -d "$abs_path" ] ; then
-            abs_path="$abs_path/"
+            url_path="$abs_path/"
          fi
 
          if [ $ftp_absolute -eq 0 ]; then
             ## assume ftp server has chrooted to user's HOME dir
             ## so strip $HOME/ from beginning of path
-            rel_path=${abs_path#$HOME/}
+            rel_path=${url_path#$HOME/}
          else
-            rel_path=$abs_path
+            rel_path=$url_path
          fi
 
          if [ $verbose -gt 0 ] ; then
@@ -455,6 +602,8 @@ elif [ $copy_method = "ftp" ]; then
          fi
 
          $bbedit_ssh_command $bbedit_command "ftp://$USER@$HOSTNAME/$rel_path"
+
+         finish_edit "$abs_path"
       fi
 
    done
@@ -475,15 +624,10 @@ elif [ $copy_method = "scp" ]; then
 
    for i in $edit_files
    do
-      abs_path=`readlink -n -f $i`
-      filename=`basename $abs_path`
+      abs_path=`abs_edit_path $i`
+      filename=`basename "$abs_path"`
 
-      ## it should be fine working with directories, but there is non-trivial risk when copying data back
-      ## so let's only support editing of single files with this version
-      if [ ! -f "$abs_path" -o ! -r "$abs_path" ] ; then
-         echo "File not found, or is not readable: $abs_path"
-
-      else
+      if prepare_edit "$abs_path" "$i" file ; then
          if [ $verbose -gt 0 ] ; then
             echo "Editing file: $abs_path using $bbedit_tmp_dir/$filename"
          fi
@@ -493,6 +637,8 @@ elif [ $copy_method = "scp" ]; then
          $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
 
          $bbedit_scp_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
+
+         finish_edit "$abs_path"
       fi
 
    done
@@ -511,15 +657,10 @@ elif [ $copy_method = "rsync" ]; then
 
    for i in $edit_files
    do
-      abs_path=`readlink -n -f $i`
-      filename=`basename $abs_path`
+      abs_path=`abs_edit_path $i`
+      filename=`basename "$abs_path"`
 
-      ## it should be fine working with directories, but there is non-trivial risk when copying data back
-      ## so let's only support editing of single files with this version
-      if [ ! -f "$abs_path" -o ! -r "$abs_path" ] ; then
-         echo "File not found, or is not readable: $abs_path"
-
-      else
+      if prepare_edit "$abs_path" "$i" file ; then
          if [ $verbose -gt 0 ] ; then
             echo "Editing file: $abs_path using $bbedit_tmp_dir/$filename"
          fi
@@ -529,6 +670,8 @@ elif [ $copy_method = "rsync" ]; then
          $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
 
          $bbedit_rsync_command -e "$bbedit_rsync_rsh" $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
+
+         finish_edit "$abs_path"
       fi
 
    done
@@ -538,6 +681,8 @@ else
    exit 1
    
 fi
+
+exit $exit_status
 
 
 # Local Variables:
