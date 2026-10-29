@@ -21,6 +21,7 @@
 # v1.2 Pre/post edit hooks (pre_edit_hook / post_edit_hook, -e / -E)
 #      Non-existent files are created on open, and removed again if nothing was saved
 #      Installer and self-update download the latest GitHub release instead of the development branch
+#      -V / --version prints the version
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -75,13 +76,29 @@ if [ -r ~/.rbbedit ] ; then
    . ~/.rbbedit
 fi
 
+# Version is the newest entry in the changelog above, so there is only one place to update it
+show_version() {
+   rbbedit_version=$(sed -n 's/^# \(v[0-9][0-9.]*\) .*/\1/p' "$0" | tail -1)
+   echo "rbbedit $rbbedit_version"
+   exit 0
+}
+
+# getopts has no long options, so look for --version before parsing
+for arg in "$@"
+do
+   case "$arg" in
+      --version) show_version;;
+      --) break;;
+   esac
+done
+
 # Check that at least one argument was specified
 if [ $# -lt 1 ] ; then
    echo "You must specify at least 1 file name or option."
    exit 1
 fi
 
-while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWeEvPR+? opt
+while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWeEvVPR+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
@@ -101,12 +118,14 @@ do case "$opt" in
    E) hooks_enabled=0;;
    b) bbedit_prog="$OPTARG";;
    v) verbose=1;;
+   V) show_version;;
    P) request_perms=1;;
    R) copy_restricted=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
   \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] [-e|E] file ..."
       echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
+      echo >&2 "       $0 -V | --version"
       exit 1;;
    esac
 done
