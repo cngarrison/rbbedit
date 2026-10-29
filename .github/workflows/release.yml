@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Check & Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # required to create GitHub Releases
+      id-token: write       # required for build provenance attestations
+      attestations: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history and tags, for the release notes since the previous tag
+
+      # The header changelog is the version source: the tag must be its newest "# vX.Y" entry
+      - name: Verify version consistency
+        run: |
+          HEADER_VERSION=$(sed -n 's/^# \(v[0-9][0-9.]*\) .*/\1/p' rbbedit | tail -1)
+          echo "rbbedit header version : $HEADER_VERSION"
+          echo "Tag                    : $GITHUB_REF_NAME"
+          if [ "$HEADER_VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "❌ Version mismatch. Add a '# $GITHUB_REF_NAME ...' entry to the rbbedit header changelog before tagging."
+            exit 1
+          fi
+          echo "✓ Versions match: $HEADER_VERSION"
+
+      - name: Check shell syntax
+        run: |
+          sh -n rbbedit
+          dash -n rbbedit
+          bash -n install.sh
+
+      - name: Checksums
+        run: sha256sum rbbedit install.sh | tee SHA256SUMS
+
+      # Replaces the old Keybase-signed SIGNED.md: verify with `gh attestation verify <file> --repo <owner>/rbbedit`
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            rbbedit
+            install.sh
+
+      - name: Write release notes
+        run: |
+          ./scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rbbedit
+            install.sh
+            SHA256SUMS
+          body_path: ${{ runner.temp }}/release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

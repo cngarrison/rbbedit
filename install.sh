@@ -22,8 +22,8 @@ install_path=`dirname $rbbedit_path`
 if git ls-files >& /dev/null &&  [[ -f rbbedit ]]; then
 	$SUDO cp rbbedit $rbbedit_path || { echo "Failed to install $install_base into $install_path"; exit 1; }
 else
-# 	$SUDO wget --no-check-certificate -O $rbbedit_path https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit || { echo "Failed to install $install_base into $install_path"; exit 1; }
-	$SUDO curl -L --insecure -o $rbbedit_path https://raw.githubusercontent.com/cngarrison/rbbedit/master/rbbedit || { echo "Failed to install $install_base into $install_path"; exit 1; }
+	# latest GitHub release, not the development branch
+	$SUDO curl -fsSL -o $rbbedit_path https://github.com/cngarrison/rbbedit/releases/latest/download/rbbedit || { echo "Failed to install $install_base into $install_path"; exit 1; }
 	$SUDO chmod +x $rbbedit_path || { echo "Failed to chmod rbbedit at $rbbedit_path"; exit 1; }
 fi
 echo "Installed $install_base into $install_path"; exit 0;
