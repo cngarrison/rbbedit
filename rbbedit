@@ -22,6 +22,8 @@
 #      Non-existent files are created on open, and removed again if nothing was saved
 #      Installer and self-update download the latest GitHub release instead of the development branch
 # v1.3 Command option to print the version (-V / --version)
+#      Background wait mode (-B / background_wait=1): return to the prompt at once, and run
+#      post_edit_hook in a detached job when BBEdit closes the file, logging to ~/.rbbedit.log
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -54,6 +56,9 @@ ftp_absolute=0
 expan_volume=""
 bbedit_wait_args=" --wait --resume"
 bbedit_wait="$bbedit_wait_args"
+background_wait=0          # -B: return to the prompt at once and wait for BBEdit in a detached job
+bbedit_background_wait_args=" --wait"   # no --resume, so closing a window doesn't bring Terminal forward
+rbbedit_log="$HOME/.rbbedit.log"        # output of background edits (copy back, hooks)
 bbedit_prog="/usr/local/bin/bbedit"
 local_key_identity=""
 bbedit_key_identity=""
@@ -98,7 +103,7 @@ if [ $# -lt 1 ] ; then
    exit 1
 fi
 
-while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWeEvVPR+? opt
+while getopts U:H:u:h:p:I:m:x:k:i:y:b:wWBeEvVPR+? opt
 do case "$opt" in
    U) host_sftp_user="$OPTARG";;
    H) host_sftp_host="$OPTARG";;
@@ -112,8 +117,11 @@ do case "$opt" in
    k) key_copy="$OPTARG";;
    i) local_key_identity="$OPTARG"
       bbedit_key_identity="$OPTARG";;
-   w) bbedit_wait="$bbedit_wait_args";;
-   W) bbedit_wait="";;
+   w) bbedit_wait="$bbedit_wait_args"
+      background_wait=0;;
+   W) bbedit_wait=""
+      background_wait=0;;
+   B) background_wait=1;;
    e) hooks_enabled=1;;
    E) hooks_enabled=0;;
    b) bbedit_prog="$OPTARG";;
@@ -123,7 +131,7 @@ do case "$opt" in
    R) copy_restricted=1;;
    y) yes_agree="$OPTARG";;
   \+) self_update=1;;
-  \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W] [-e|E] file ..."
+  \?) echo >&2 "Usage: $0 [-U sftp-user] [-H sftp-host] [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-m copy-method (sftp | ftp | expan | scp | rsync)] [-x expan-volume] [-w|W|B] [-e|E] file ..."
       echo >&2 "       $0 [-u ssh-user] [-h ssh-host | ssh-user@ssh-host] [-p ssh-port] [-I ssh-identity-file] [-k copy-direction (get | send)] [-i identity-file] [-y understood] [-P] [-R] ..."
       echo >&2 "       $0 -V | --version"
       exit 1;;
@@ -213,6 +221,11 @@ if [ $copy_method = "scp" -o $copy_method = "rsync" ] ; then
    if [ -z "$bbedit_wait" ] ; then
       bbedit_wait="$bbedit_wait_args"
    fi
+fi
+
+# background mode waits for BBEdit in a detached job, so it always needs --wait
+if [ $background_wait -gt 0 ] ; then
+   bbedit_wait="$bbedit_background_wait_args"
 fi
 
 bbedit_command="$bbedit_prog $bbedit_wait"
@@ -521,8 +534,51 @@ finish_edit() {
    if ! run_hook post_edit_hook "$post_edit_hook" "$edit_path" ; then
       echo "post_edit_hook failed: $edit_path"
       exit_status=1
+      return 1
    fi
 }
+
+# Open the file in BBEdit; once it's closed, copy it back (scp/rsync) and run finish_edit.
+# $1 = absolute path, $2 = what bbedit opens
+edit_session() {
+   $bbedit_ssh_command $bbedit_command "$2"
+   if [ $? -eq 255 ] ; then
+      # ssh's own error status: the connection was lost, so editing may not be finished
+      echo "Lost connection to the BBEdit workstation, file not copied back and post_edit_hook not run: $1"
+      return 1
+   fi
+
+   case "$copy_method" in
+      scp)   $bbedit_scp_command $bbedit_ssh_host:$2 $1;;
+      rsync) $bbedit_rsync_command -e "$bbedit_rsync_rsh" $bbedit_ssh_host:$2 $1;;
+   esac
+
+   finish_edit "$1"
+}
+
+# Run edit_session at the prompt, or with -B in a detached job that logs to $rbbedit_log
+# and only writes to the terminal if something fails
+start_edit() {
+   if [ $background_wait -eq 0 ] ; then
+      edit_session "$1" "$2"
+      return
+   fi
+
+   (
+      trap '' HUP
+      echo "== `date '+%Y-%m-%d %H:%M:%S'` $1 ($copy_method)"
+      if ! edit_session "$1" "$2" ; then
+         echo "rbbedit: problem after editing $1, see $rbbedit_log" > "$rbbedit_tty" 2>/dev/null
+      fi
+   ) < /dev/null >> "$rbbedit_log" 2>&1 &
+
+   if [ $verbose -gt 0 ] ; then
+      echo "Waiting for BBEdit in background (pid $!), output in $rbbedit_log"
+   fi
+}
+
+rbbedit_tty=`tty 2>/dev/null` || rbbedit_tty=/dev/null
+edit_count=0
 
 
 if [ $copy_method = "expan" ]; then
@@ -550,9 +606,7 @@ if [ $copy_method = "expan" ]; then
             echo "Editing file: $abs_path using /Volumes/$expan_volume/$abs_path"
          fi
 
-         $bbedit_ssh_command $bbedit_command /Volumes/$expan_volume/$abs_path
-
-         finish_edit "$abs_path"
+         start_edit "$abs_path" "/Volumes/$expan_volume/$abs_path"
       fi
 
    done
@@ -586,9 +640,7 @@ elif [ $copy_method = "sftp" ]; then
             echo "Editing file: $abs_path using sftp://$host_sftp_user@$host_sftp_host/$url_path"
          fi
 
-         $bbedit_ssh_command $bbedit_command "sftp://$host_sftp_user@$host_sftp_host/$url_path"
-
-         finish_edit "$abs_path"
+         start_edit "$abs_path" "sftp://$host_sftp_user@$host_sftp_host/$url_path"
       fi
 
    done
@@ -621,9 +673,7 @@ elif [ $copy_method = "ftp" ]; then
             echo "Editing file: $abs_path using ftp://$USER@$HOSTNAME/$rel_path"
          fi
 
-         $bbedit_ssh_command $bbedit_command "ftp://$USER@$HOSTNAME/$rel_path"
-
-         finish_edit "$abs_path"
+         start_edit "$abs_path" "ftp://$USER@$HOSTNAME/$rel_path"
       fi
 
    done
@@ -646,6 +696,11 @@ elif [ $copy_method = "scp" ]; then
    do
       abs_path=`abs_edit_path $i`
       filename=`basename "$abs_path"`
+      if [ $background_wait -gt 0 ] ; then
+         # files stay open together, so keep same-named files apart in the workstation's TMPDIR
+         edit_count=$(( $edit_count + 1 ))
+         filename="rbbedit-$$-$edit_count-$filename"
+      fi
 
       if prepare_edit "$abs_path" "$i" file ; then
          if [ $verbose -gt 0 ] ; then
@@ -654,11 +709,7 @@ elif [ $copy_method = "scp" ]; then
 
          $bbedit_scp_command $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
 
-         $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
-
-         $bbedit_scp_command $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
-
-         finish_edit "$abs_path"
+         start_edit "$abs_path" "$bbedit_tmp_dir/$filename"
       fi
 
    done
@@ -679,6 +730,11 @@ elif [ $copy_method = "rsync" ]; then
    do
       abs_path=`abs_edit_path $i`
       filename=`basename "$abs_path"`
+      if [ $background_wait -gt 0 ] ; then
+         # files stay open together, so keep same-named files apart in the workstation's TMPDIR
+         edit_count=$(( $edit_count + 1 ))
+         filename="rbbedit-$$-$edit_count-$filename"
+      fi
 
       if prepare_edit "$abs_path" "$i" file ; then
          if [ $verbose -gt 0 ] ; then
@@ -687,11 +743,7 @@ elif [ $copy_method = "rsync" ]; then
 
          $bbedit_rsync_command -e "$bbedit_rsync_rsh" $abs_path $bbedit_ssh_host:$bbedit_tmp_dir/$filename
 
-         $bbedit_ssh_command $bbedit_command $bbedit_tmp_dir/$filename
-
-         $bbedit_rsync_command -e "$bbedit_rsync_rsh" $bbedit_ssh_host:$bbedit_tmp_dir/$filename $abs_path
-
-         finish_edit "$abs_path"
+         start_edit "$abs_path" "$bbedit_tmp_dir/$filename"
       fi
 
    done

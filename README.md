@@ -31,6 +31,7 @@ Table of Contents
 - [Copy Methods](#copy-methods)
 - [New Files](#new-files)
 - [Edit Hooks](#edit-hooks)
+- [Background Wait](#background-wait)
 - [Requesting Automation Permissions](#requesting-automation-permissions)
 - [Restricting SSH Access](#restricting-ssh-access-with-bbedit-restricted)
 - [SSH Identity Files](#ssh-identity-files)
@@ -179,6 +180,7 @@ Script options
 * `-V`, `--version`: print the version and exit
 * `-w`: Enable BBEdit wait mode (default)
 * `-W`: Disable BBEdit wait mode (only sftp, ftp & expan methods)
+* `-B`: Background wait mode; return to the prompt at once and wait for BBEdit in a detached job (see [Background Wait](#background-wait))
 * `-e`: Run edit hooks (default, when hooks are configured)
 * `-E`: Skip edit hooks for this run
 * `-P`: Request Automation permissions for `sshd-keygen-wrapper` to control BBEdit
@@ -206,6 +208,9 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	bbedit_prog="/usr/local/bin/bbedit"
 	bbedit_wait_args=" --wait --resume"
 	bbedit_wait="$bbedit_wait_args"
+	background_wait=0
+	bbedit_background_wait_args=" --wait"
+	rbbedit_log="$HOME/.rbbedit.log"
 	
 	local_ssh_copy_id_command="ssh-copy-id"
 	local_key_identity=""
@@ -328,8 +333,8 @@ These environment variables are also set for the hook:
 Hooks are on by default once configured. Use `-E` to skip them for one run, or set `hooks_enabled=0` and use `-e`
 to turn them on when needed.
 
-`post_edit_hook` needs BBEdit's wait mode (the default) to know when editing has finished. With `-W` it is not run,
-and a message says so. If a hook fails, `rbbedit` reports it, carries on with the remaining files, and exits with
+`post_edit_hook` needs BBEdit's wait mode (the default, or `-B`) to know when editing has finished. With `-W` it is
+not run, and a message says so. If a hook fails, `rbbedit` reports it, carries on with the remaining files, and exits with
 status 1.
 
 Hooks run as the user running `rbbedit`, so for files under `/etc` they're usually root's hooks in `/root/.rbbedit`.
@@ -358,6 +363,29 @@ differences; `--limit` needs AIDE 0.17 or later):
 Or, without the pre-edit check, simply:
 
 	post_edit_hook="aide-accept --yes"
+
+
+Background Wait
+---------------
+
+In wait mode `rbbedit` holds the prompt until the file is closed in BBEdit. To open several files one after another
+and keep working, use background wait mode, with `-B` or in `~/.rbbedit`:
+
+	background_wait=1
+
+`rbbedit` still runs `pre_edit_hook` (and creates a new file) at the prompt, so a failed check is reported straight
+away. It then returns, and a detached job waits for BBEdit. When the file is closed the job copies it back
+(`scp`/`rsync`), removes an unsaved new file, and runs `post_edit_hook` if the file changed.
+
+* Output from the background job goes to `~/.rbbedit.log` (set `rbbedit_log` to change it). If something fails,
+  a one-line message is also written to the terminal `rbbedit` was started from.
+* Hooks can't prompt for input in this mode, so use non-interactive commands (e.g. `aide-accept --yes`).
+* The job keeps running after you log out. For `scp`/`rsync` the copy back still needs an SSH key it can use then;
+  a forwarded agent goes away at logout.
+* If the SSH connection to the workstation drops (sleep, network), the file is not copied back and
+  `post_edit_hook` is not run; the log says so.
+* `--resume` isn't used, so closing a window in BBEdit doesn't bring Terminal to the front.
+* `-w` or `-W` on the command line override `background_wait=1` for one run.
 
 
 Requesting Automation Permissions
