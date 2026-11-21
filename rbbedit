@@ -25,6 +25,9 @@
 #      Background wait mode (-B / background_wait=1): return to the prompt at once, and run
 #      post_edit_hook in a detached job when BBEdit closes the file, logging to ~/.rbbedit.log
 # v1.4 post_edit_hook also runs when the file was rewritten with the same content (RBBEDIT_CHANGED=2)
+# v1.5 Reconnect and keep waiting for BBEdit after a dropped SSH connection (wait_reconnect_tries/_delay)
+#      Report bbedit returning at once with the file unchanged (already open in BBEdit?): hook not run
+#      Background mode logs when post_edit_hook is skipped because the file is unchanged
 #-----------------------------------------------------------------------
 
 host_sftp_user=""
@@ -73,6 +76,11 @@ self_update=0  #don't set this to true in ~/.rbbedit, really, just don't
 pre_edit_hook=""          # run before the file is opened; non-zero exit skips the file
 post_edit_hook=""         # run after the file is closed in BBEdit (wait mode only)
 post_edit_hook_always=0   # 1 = run post_edit_hook even when the file is unchanged
+# A dropped SSH connection doesn't close the file in BBEdit (and with sftp/ftp/expan its saves still
+# reach the server), so reconnect and wait again before giving up on post_edit_hook.
+wait_reconnect_tries=5    # reconnect attempts after the connection drops (0 = give up at once)
+wait_reconnect_delay=10   # seconds before the first reconnect; doubles on each attempt
+wait_min_seconds=3        # bbedit returning sooner than this, with the file unchanged, is reported
 hooks_enabled=1           # -e enables, -E disables
 create_missing=1          # open non-existent files as new empty files (parent dir must exist)
 exit_status=0
@@ -552,7 +560,15 @@ finish_edit() {
    fi
 
    if [ "$edit_changed" = "0" -a $post_edit_hook_always -eq 0 ] ; then
-      if [ $verbose -gt 0 ] ; then
+      # bbedit --wait returning at once usually means it didn't wait for this edit, e.g. the file was
+      # already open in BBEdit from an earlier session; saves made there afterwards would skip the hook
+      if [ -n "$wait_elapsed" ] && [ "$wait_elapsed" -lt "$wait_min_seconds" ] ; then
+         echo "bbedit returned after ${wait_elapsed}s with the file unchanged, post_edit_hook not run: $edit_path"
+         echo "Is it already open in BBEdit? Close it there, then do by hand what post_edit_hook ($post_edit_hook) does."
+         exit_status=1
+         return 1
+      fi
+      if [ $verbose -gt 0 -o $background_wait -gt 0 ] ; then
          echo "File unchanged, post_edit_hook not run: $edit_path"
       fi
       return 0
@@ -565,13 +581,49 @@ finish_edit() {
    fi
 }
 
+# Run bbedit (waiting for the file to be closed, unless -W). ssh exits 255 for its own errors: if the
+# connection drops mid-edit, the document stays open in BBEdit, so reconnect and wait for it again.
+# A 255 straight away on the first attempt means we never got as far as BBEdit; don't retry that.
+# Sets wait_elapsed to the duration of the last attempt. Returns 255 when giving up.
+# $1 = absolute path, $2 = what bbedit opens
+wait_for_bbedit() {
+   wait_try=0
+   wait_delay="$wait_reconnect_delay"
+   while : ; do
+      wait_started=`date +%s`
+      $bbedit_ssh_command $bbedit_command "$2"
+      wait_rc=$?
+      wait_elapsed=$(( `date +%s` - $wait_started ))
+      # After a reconnect, bbedit returning at once means it didn't wait: for sftp/ftp URLs
+      # `bbedit --wait` returns immediately when the document is already open (tested 2026-11-21).
+      # The window may still be open, so finishing now could run the hook mid-edit; give up instead.
+      if [ $wait_rc -ne 255 -a $wait_try -gt 0 -a $wait_elapsed -lt $wait_min_seconds ] ; then
+         echo "bbedit returned at once after reconnecting; can't wait for the window that is already open: $1"
+         return 255
+      fi
+      [ $wait_rc -ne 255 ] && return 0
+      if [ $wait_try -eq 0 -a $wait_elapsed -lt $wait_min_seconds ] ; then
+         return 255
+      fi
+      if [ $wait_try -ge $wait_reconnect_tries ] ; then
+         return 255
+      fi
+      wait_try=$(( $wait_try + 1 ))
+      echo "Lost connection to the BBEdit workstation, waiting for BBEdit again in ${wait_delay}s ($wait_try/$wait_reconnect_tries): $1"
+      sleep "$wait_delay"
+      wait_delay=$(( $wait_delay * 2 ))
+   done
+}
+
 # Open the file in BBEdit; once it's closed, copy it back (scp/rsync) and run finish_edit.
 # $1 = absolute path, $2 = what bbedit opens
 edit_session() {
-   $bbedit_ssh_command $bbedit_command "$2"
-   if [ $? -eq 255 ] ; then
-      # ssh's own error status: the connection was lost, so editing may not be finished
+   wait_elapsed=""
+   if ! wait_for_bbedit "$1" "$2" ; then
       echo "Lost connection to the BBEdit workstation, file not copied back and post_edit_hook not run: $1"
+      if [ $hooks_enabled -gt 0 -a -n "$post_edit_hook" ] ; then
+         echo "If it's still open in BBEdit, its saves still reach the server (sftp/ftp/expan); close it, then do by hand what post_edit_hook ($post_edit_hook) does."
+      fi
       remove_edit_marker
       return 1
    fi

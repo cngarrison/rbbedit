@@ -224,6 +224,10 @@ The following options can be set in ~/.rbbedit file. These are the script defaul
 	hooks_enabled=1
 	create_missing=1
 	
+	wait_reconnect_tries=5
+	wait_reconnect_delay=10
+	wait_min_seconds=3
+	
 	verbose=0
 
 Set default for username on BBEdit workstation:
@@ -339,6 +343,15 @@ to turn them on when needed.
 not run, and a message says so. If a hook fails, `rbbedit` reports it, carries on with the remaining files, and exits with
 status 1.
 
+`post_edit_hook` runs once, when the window is closed, not on each save: `bbedit` only reports that the file was
+closed. With `sftp`/`ftp`/`expan`, BBEdit saves straight to the server, so between a save and closing the window the
+file on the server has changed without the hook having run (an AIDE check in that window reports it). Close the
+window when you've finished editing.
+
+If `bbedit` returns within `wait_min_seconds` (default 3) and the file is unchanged, `rbbedit` reports it and exits
+with status 1 instead of silently skipping the hook: it usually means `bbedit` didn't wait for this edit, e.g. the
+file was already open in BBEdit from an earlier session. Close it there, then do by hand what the hook does.
+
 Hooks run as the user running `rbbedit`, so for files under `/etc` they're usually root's hooks in `/root/.rbbedit`.
 
 #### Example: AIDE
@@ -384,8 +397,15 @@ away. It then returns, and a detached job waits for BBEdit. When the file is clo
 * Hooks can't prompt for input in this mode, so use non-interactive commands (e.g. `aide-accept --yes`).
 * The job keeps running after you log out. For `scp`/`rsync` the copy back still needs an SSH key it can use then;
   a forwarded agent goes away at logout.
-* If the SSH connection to the workstation drops (sleep, network), the file is not copied back and
-  `post_edit_hook` is not run; the log says so.
+* If the SSH connection to the workstation drops (sleep, network), the window stays open in BBEdit (and with
+  `sftp`/`ftp`/`expan` its saves still reach the server). `rbbedit` reconnects and waits for the window again,
+  up to `wait_reconnect_tries` times (default 5), starting after `wait_reconnect_delay` seconds (default 10) and
+  doubling each time. If the window was closed while disconnected, `bbedit` opens the file again; close it again.
+  If it gives up, the file is not copied back and `post_edit_hook` is not run; the log and terminal say so.
+  This also applies in normal wait mode.
+  Limitation: for `sftp`/`ftp` URLs, `bbedit --wait` returns at once when the document is already open, so it can't
+  wait for the original window after a reconnect. `rbbedit` detects that and gives up (hook not run) rather than
+  running the hook while the window may still be open. Reconnecting works for `scp`/`rsync`/`expan` (local paths).
 * `--resume` isn't used, so closing a window in BBEdit doesn't bring Terminal to the front.
 * `-w` or `-W` on the command line override `background_wait=1` for one run.
 
